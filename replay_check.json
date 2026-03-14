@@ -1,0 +1,167 @@
+{
+  "session_id": "test_session",
+  "world_seed": 1234,
+  "events": [
+    {
+      "timestamp": 1773444881.4559283,
+      "event_type": "session_start",
+      "actor_id": "system",
+      "data": {
+        "world_seed": 1234
+      },
+      "plan_id": null,
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4559283,
+      "event_type": "action_move",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "SUCCESS"
+      },
+      "plan_id": "plan_57767",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4559283,
+      "event_type": "action_eat",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "SUCCESS"
+      },
+      "plan_id": "plan_57767",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_move",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "SUCCESS"
+      },
+      "plan_id": "plan_15315",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_eat",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "MISSING"
+      },
+      "plan_id": "plan_15315",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_move",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "SUCCESS"
+      },
+      "plan_id": "plan_981",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_eat",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "MISSING"
+      },
+      "plan_id": "plan_981",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_move",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "SUCCESS"
+      },
+      "plan_id": "plan_11880",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_eat",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "MISSING"
+      },
+      "plan_id": "plan_11880",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_move",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "SUCCESS"
+      },
+      "plan_id": "plan_76313",
+      "intention_id": null,
+      "rng_seed": null
+    },
+    {
+      "timestamp": 1773444881.4574406,
+      "event_type": "action_eat",
+      "actor_id": "c1",
+      "data": {
+        "target": [
+          11,
+          11
+        ],
+        "result": "MISSING"
+      },
+      "plan_id": "plan_76313",
+      "intention_id": null,
+      "rng_seed": null
+    }
+  ]
+}
