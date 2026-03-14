@@ -1699,3 +1699,80 @@ If you were to rebuild this system today:
 …you could **dramatically reduce irrational actions**, but you'd need to **inject artificial randomness or emotional modifiers** to retain the emergent, "alive" feel.
 
 💡 **Fun fact:** Some of the creature's "irrational" behaviors inspired modern AI research on **stochastic agent policies** and **robustness to sparse rewards**, because these quirks mirror real-world learning challenges in RL.
+
+**Good Traits (Pro-social / benevolent)**
+
+These push the creature toward helping villagers and behaving “good”.
+
+Trait	Meaning	Effect on Behavior
+Compassion	tendency to help others	increases help_villager intentions
+Generosity	willingness to give resources	decreases hoarding
+Protectiveness	tendency to defend villagers	increases attack_enemy only
+Empathy	sensitivity to villager suffering	increases response to negative events
+Obedience	follows player expectations	increases compliance with player signals
+Cleanliness	helps maintain villages	increases clean_village actions
+Patience	tolerance of mistakes	reduces retaliation
+Temperance	self-control	reduces impulsive actions
+Gratitude	remembers positive feedback	strengthens reward learning
+Gentleness	prefers non-violent interaction	reduces damage actions
+Diligence	willingness to work	increases labor tasks
+Altruism	willingness to sacrifice own needs	prioritizes village goals
+
+**Evil Traits (Selfish / destructive)**
+
+These push the creature toward harmful or selfish behavior.
+
+Trait	Meaning	Effect on Behavior
+Aggression	tendency to attack	increases attack_agent actions
+Cruelty	enjoyment of harming others	reinforces destructive acts
+Greed	hoarding resources	increases steal_food
+Dominance	desire to control others	increases intimidation behaviors
+Sadism	pleasure from punishment	amplifies reactions to suffering
+Deceitfulness	likelihood to manipulate	increases trickery actions
+Gluttony	overeating	increases food consumption
+Destructiveness	enjoyment of breaking things	increases building destruction
+Arrogance	ignores player instruction	decreases obedience
+Vindictiveness	revenge seeking	increases retaliation
+Neglectfulness	ignores villager needs	reduces helping behavior
+Corruption	tendency to exploit systems	encourages rule-breaking
+
+
+**Neutral / Personality Traits**
+
+These are not inherently good or evil but influence style of behavior.
+
+Trait	Meaning
+Curiosity	desire to explore objects
+Playfulness	tendency to interact
+Fearfulness	reaction to punishment
+Boldness	willingness to take risks
+Sociability	desire to interact with agents
+Laziness	reluctance to work
+Focus	ability to pursue long goals
+Adaptability	responsiveness to new situations
+Recommended Trait Model
+
+Instead of binary good/evil, use continuous values:
+
+trait = [-1, +1]
+
+Example:
+
+Aggression = +0.7
+Compassion = -0.2
+Curiosity = +0.5
+Obedience = +0.3
+
+Interpretation:
+
++1   strong trait
+ 0   neutral
+-1   opposite trait
+
+Example:
+
+Compassion = -0.8
+
+means cruelty.
+
+This allows smooth personality gradients.

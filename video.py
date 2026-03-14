@@ -118,30 +118,34 @@ class GameVideo:
         self.screen.blit(self.font_med.render(f"PLAN STEPS: {plan_len}", True, (255, 255, 255)), (start_x + 10, y))
         y += 40
 
-        # Traits (Personal Variance)
-        self.screen.blit(self.font_med.render("TRAITS:", True, (255, 200, 100)), (start_x + 10, y))
+        # Moral Alignment Summary
+        moral_traits = ["compassion", "generosity", "obedience", "gentleness", "diligence", "altruism", "empathy", "patience"]
+        avg_alignment = sum(agent.ai.traits.traits.get(t, 0.0) for t in moral_traits) / len(moral_traits)
+        align_str = "ANGELIC" if avg_alignment > 0.4 else "DIABOLIC" if avg_alignment < -0.4 else "NEUTRAL"
+        self.screen.blit(self.font_med.render(f"ALIGNMENT: {align_str} ({avg_alignment:.2f})", True, (255, 255, 200)), (start_x + 10, y))
+        y += 35
+
+        # Traits (Personal Variance) - 3 Columns
+        self.screen.blit(self.font_med.render("TRAITS (Cognitive Core):", True, (255, 200, 100)), (start_x + 10, y))
         y += 25
-        t_items = list(agent.ai.traits.traits.items())
-        for i in range(0, len(t_items), 2):
-            k1, v1 = t_items[i]
-            val1_str = f"{v1:.2f}" if isinstance(v1, (int, float)) else str(v1)
-            col1 = f"{k1[:3]}: {val1_str}"
-            self.screen.blit(self.font_small.render(col1, True, (200, 200, 200)), (start_x + 20, y))
-            if i + 1 < len(t_items):
-                k2, v2 = t_items[i+1]
-                val2_str = f"{v2:.2f}" if isinstance(v2, (int, float)) else str(v2)
-                col2 = f"{k2[:3]}: {val2_str}"
-                self.screen.blit(self.font_small.render(col2, True, (200, 200, 200)), (start_x + 140, y))
-            y += 20
-        y += 20
+        t_items = [(k, v) for k, v in agent.ai.traits.traits.items() if isinstance(v, (int, float))]
+        for i in range(0, len(t_items), 3):
+            for j in range(3):
+                if i + j < len(t_items):
+                    k, v = t_items[i+j]
+                    col_x = start_x + 15 + (j * 90)
+                    label = self.font_small.render(f"{k[:5]}: {v:.1f}", True, (200, 200, 200))
+                    self.screen.blit(label, (col_x, y))
+            y += 18
+        y += 15
 
         # Learning Biases (if creature)
         if hasattr(agent.ai, 'learning') and agent.ai.learning.behavior_matrix:
-            self.screen.blit(self.font_med.render("LEARNING BIASES:", True, (255, 200, 200)), (start_x + 10, y))
+            self.screen.blit(self.font_med.render("LEARNING BIASES (Habits):", True, (255, 200, 200)), (start_x + 10, y))
             y += 25
-            # Simplified: just show a few biases
-            bias_items = list(agent.ai.learning.behavior_matrix.get("default", {}).items())
-            for goal, bias in bias_items:#bias_items[:5]:
+            raw_biases = agent.ai.learning.behavior_matrix.get("default", {})
+            bias_items = list(raw_biases.items())
+            for goal, bias in bias_items[:6]: # Show top 6
                 label = self.font_small.render(f"{goal}: {bias:.2f}", True, (255, 255, 255))
                 self.screen.blit(label, (start_x + 20, y))
                 y += 20

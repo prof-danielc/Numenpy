@@ -83,23 +83,49 @@ class DriveSystem:
 
 class TraitSystem:
     def __init__(self, species_priors: Optional[Dict] = None, rng: Optional[random.Random] = None):
+        # Continuous traits in range [-1.0, +1.0]
+        # Positive values = Good/Pro-social, Negative values = Evil/Selfish
         self.traits = {
-            "aggression": 0.5,
-            "compassion": 0.5,
+            # Good/Evil Axis (Paired)
+            "compassion": 0.0,  # +: Compassion, -: Cruelty
+            "generosity": 0.0,   # +: Generosity, -: Greed
+            "obedience": 0.0,    # +: Obedience, -: Arrogance
+            "gentleness": 0.0,   # +: Gentleness, -: Aggression
+            "diligence": 0.0,    # +: Diligence, -: Laziness
+            "altruism": 0.0,     # +: Altruism, -: Dominance
+            "empathy": 0.0,
+            "gratitude": 0.0,
+            "patience": 0.0,     # +: Patience, -: Vindictiveness
+            "temperance": 0.0,
+            "protectiveness": 0.0,
+            "cleanliness": 0.0,
+            
+            # Additional Evil/Selfish mappings (can be independent or negative offsets)
+            "sadism": 0.0,
+            "deceitfulness": 0.0,
+            "gluttony": 0.0,
+            "destructiveness": 0.0,
+            "neglectfulness": 0.0,
+            "corruption": 0.0,
+
+            # Neutral / Personality Traits (Style)
             "curiosity": 0.5,
-            "friendliness": 0.5,
-            "laziness": 0.2,
-            "bravery": 0.5
+            "playfulness": 0.5,
+            "fearfulness": 0.5,
+            "boldness": 0.5,
+            "sociability": 0.5,
+            "focus": 0.5,
+            "adaptability": 0.5
         }
         if species_priors:
             self.traits.update(species_priors)
             
-        # Individual Variance: +/- 20% randomization if rng is provided
+        # Individual Variance: +/- 0.4 randomization if rng is provided
         if rng:
             for k, v in self.traits.items():
                 if isinstance(v, (int, float)):
-                    variance = (rng.random() * 0.4) - 0.2 # -0.2 to 0.2
-                    self.traits[k] = max(0.0, min(1.0, v + variance))
+                    variance = (rng.random() * 0.4) - 0.2
+                    self.traits[k] = max(-1.0, min(1.0, v + variance))
 
 class DesireSystem:
     def __init__(self):
@@ -107,39 +133,49 @@ class DesireSystem:
 
     def evaluate(self, drives: Dict, traits: Dict, learning: 'LearningSystem', agent_type: str, beliefs: BeliefSystem) -> List[Dict]:
         desires = []
-        # Bias from learning
+        # Bias from learning (Habits)
         bias_eat = learning.get_bias("default", "eat")
         bias_explore = learning.get_bias("default", "explore")
-        # hunger -> desire_food (All agents need to eat!)
-        desires.append({"goal": "eat", "utility": drives["hunger"] * (1.2 - traits["laziness"]) * bias_eat})
+
+        # Trait mappings (Mapping [-1, 1] to [0, 2] multipliers roughly)
+        # 1.0 + trait allows 0.0 to 2.0 range (Neutral is 1.0)
+        t_compassion = 1.0 + traits.get("compassion", 0.0)
+        t_gentleness = 1.0 + traits.get("gentleness", 0.0)
+        t_patience = 1.0 + traits.get("patience", 0.0)
+        t_curiosity = 1.0 + traits.get("curiosity", 0.0)
+        t_sociability = 1.0 + traits.get("sociability", 0.0)
+        t_laziness = 1.0 - traits.get("diligence", 0.0) # diligent -> low laziness
+        t_obedience = 1.0 + traits.get("obedience", 0.0)
+
+        # hunger -> desire_food
+        desires.append({"goal": "eat", "utility": drives["hunger"] * (2.0 - t_patience) * bias_eat})
 
         # hunger + creature -> hunt (Only if prey is visible)
         if agent_type == "creature" and drives["hunger"] > 0.4:
             has_prey = any("villager" in a["id"] or a.get("type") == "person" for a in beliefs.known_agents)
             if has_prey:
                 bias_hunt = learning.get_bias("default", "hunt")
-                desires.append({"goal": "hunt", "utility": drives["hunger"] * traits["aggression"] * 2.0 + bias_hunt})
+                # High Aggression (negative gentleness) increases hunt utility
+                aggression_factor = 2.0 - t_gentleness
+                desires.append({"goal": "hunt", "utility": drives["hunger"] * aggression_factor * 2.0 + bias_hunt})
 
         # carnage + person -> flee
         if agent_type == "person" and beliefs.known_carnage:
-            desires.append({"goal": "flee", "utility": 0.8}) # High priority fear
-        
-        # curiosity -> desire_explore (Brave agents explore more)
-        desires.append({"goal": "explore", "utility": drives["curiosity"] * traits["curiosity"] * traits["bravery"] * bias_explore})
-        
-        # social -> socialize (Friendly agents prioritize social, boost if we have gossip)
-        social_utility = drives["social"] * traits["friendliness"]
-        # Boost if we have unshared interesting beliefs
-        # Note: DesireSystem doesn't have access to Agent but we can pass shared_set or just assume
-        # For now, let's just use the basic utility and let Planner handle the action choice.
+            desires.append({"goal": "flee", "utility": 1.2}) # High priority fear
+
+        # curiosity -> desire_explore
+        desires.append({"goal": "explore", "utility": drives["curiosity"] * t_curiosity * bias_explore})
+
+        # social -> socialize
+        social_utility = drives["social"] * t_sociability
         desires.append({"goal": "socialize", "utility": social_utility})
 
-        # boredom -> idle (Lazy agents idle more)
-        desires.append({"goal": "idle", "utility": drives["boredom"] * traits["laziness"]})
+        # boredom -> idle
+        desires.append({"goal": "idle", "utility": drives["boredom"] * t_laziness})
 
         # compassion -> help
-        desires.append({"goal": "help", "utility": traits["compassion"] * 0.5})
-        
+        desires.append({"goal": "help", "utility": t_compassion * 0.5})
+
         self.candidate_desires = sorted(desires, key=lambda x: x["utility"], reverse=True)
         return self.candidate_desires
 

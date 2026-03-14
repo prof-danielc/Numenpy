@@ -40,12 +40,13 @@ class Agent:
         return plan
 
 class Person(Agent):
-    def __init__(self, agent_id: str, x: int, y: int, seed: int = 1337):
-        super().__init__(agent_id, x, y, species_priors={"aggression": 0.2, "curiosity": 0.8, "type": "person"}, seed=seed)
+    def __init__(self, agent_id, x, y, seed=1337):
+        super().__init__(agent_id, x, y, species_priors={"compassion": 0.3, "gentleness": 0.5, "curiosity": 0.6, "sociability": 0.7, "type": "person"}, seed=seed)
         self.type = "person"
 
 class Creature(Agent):
-    def __init__(self, agent_id: str, x: int, y: int, seed: int = 1337):
-        super().__init__(agent_id, x, y, species_priors={"aggression": 0.5, "curiosity": 0.9, "type": "creature"}, seed=seed)
+    def __init__(self, agent_id, x, y, seed=1337):
+        # Creatures start more baseline/neutral but are more "extreme" in potential
+        super().__init__(agent_id, x, y, species_priors={"compassion": 0.0, "gentleness": -0.2, "curiosity": 0.8, "type": "creature"}, seed=seed)
         self.type = "creature"
         self.trainable = True
