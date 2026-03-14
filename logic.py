@@ -78,6 +78,8 @@ class GameLogic:
                     agent.ai.drives.drives["hunger"] += 0.005 * (1.0 + diff * 5.0)
                 
                 agent.x, agent.y = tx, ty
+                if hasattr(agent.ai, 'drives'):
+                    agent.ai.drives.drives["curiosity"] = max(0.0, agent.ai.drives.drives["curiosity"] - 0.2)
                 result = "SUCCESS"
             else:
                 result = "IMPASSABLE"
@@ -86,6 +88,8 @@ class GameLogic:
             neighbors = self.world.get_neighbors(agent.x, agent.y)
             if neighbors:
                 agent.x, agent.y = random.choice(neighbors)
+                if hasattr(agent.ai, 'drives'):
+                    agent.ai.drives.drives["curiosity"] = max(0.0, agent.ai.drives.drives["curiosity"] - 0.4)
                 result = "SUCCESS"
         elif action_type == "eat":
             # Check if food is still there
@@ -97,7 +101,7 @@ class GameLogic:
                         self.world.resources.pop(i)
                         agent.hunger = max(0.0, agent.hunger - 0.5)
                         if hasattr(agent.ai, 'learning'):
-                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 1.5)
+                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 1.5, agent.ai.traits.traits)
                         food_found = True
                         result = "SUCCESS"
                         break
@@ -108,10 +112,13 @@ class GameLogic:
             target_id = target
             target_agent = next((e for e in self.entities if e.agent_id == target_id), None)
             if target_agent and abs(agent.x - target_agent.x) <= 1 and abs(agent.y - target_agent.y) <= 1:
-                agent.ai.drives.drives["social"] = max(0.0, agent.ai.drives.drives["social"] - 0.5)
+                if hasattr(agent.ai, 'drives'):
+                    agent.ai.drives.drives["social"] = max(0.0, agent.ai.drives.drives["social"] - 0.5)
+                    agent.ai.drives.drives["boredom"] = max(0.0, agent.ai.drives.drives["boredom"] - 0.5)
                 # Reciprocal benefit
                 if hasattr(target_agent.ai.drives, 'drives'):
                     target_agent.ai.drives.drives["social"] = max(0.0, target_agent.ai.drives.drives["social"] - 0.3)
+                    target_agent.ai.drives.drives["boredom"] = max(0.0, target_agent.ai.drives.drives["boredom"] - 0.3)
                 result = "SUCCESS"
             else:
                 result = "MISSING"
@@ -126,6 +133,8 @@ class GameLogic:
             else:
                 result = "MISSING"
         elif action_type == "idle":
+            if hasattr(agent.ai, 'drives'):
+                agent.ai.drives.drives["boredom"] = max(0.0, agent.ai.drives.drives["boredom"] - 0.2)
             result = "SUCCESS"
         elif action_type == "kill_villager":
             # Target is a villager ID
@@ -151,7 +160,7 @@ class GameLogic:
                         self.world.resources.pop(i)
                         agent.hunger = max(0.0, agent.hunger - 0.7)
                         if hasattr(agent.ai, 'learning'):
-                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 2.0)
+                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 2.0, agent.ai.traits.traits)
                         remains_found = True
                         result = "SUCCESS"
                         break

@@ -77,7 +77,9 @@ class DriveSystem:
         self.drives["boredom"] += 0.005
         self.drives["curiosity"] += 0.002
         self.drives["social"] += 0.003
-        # Normalize
+        # Normalize and cap
+        for k in self.drives:
+            self.drives[k] = max(0.0, min(1.0, self.drives[k]))
         for k in self.drives:
             self.drives[k] = max(0.0, min(1.0, self.drives[k]))
 
@@ -147,8 +149,17 @@ class DesireSystem:
         t_laziness = 1.0 - traits.get("diligence", 0.0) # diligent -> low laziness
         t_obedience = 1.0 + traits.get("obedience", 0.0)
 
-        # hunger -> desire_food
-        desires.append({"goal": "eat", "utility": drives["hunger"] * (2.0 - t_patience) * bias_eat})
+        # hunger -> desire_food (Survival boost)
+        # Non-linear boost after 0.6 hunger to prevent starvation
+        survival_mult = 1.0
+        if drives["hunger"] > 0.6:
+            survival_mult = 1.0 + (drives["hunger"] - 0.6) * 15.0 # Even more aggressive boost
+        if drives["hunger"] > 0.85:
+            survival_mult *= 5.0 # Emergency priority
+        
+        # Ensure patience doesn't zero out hunger drive (floor 0.2)
+        patience_factor = max(0.2, 2.0 - t_patience)
+        desires.append({"goal": "eat", "utility": drives["hunger"] * patience_factor * bias_eat * survival_mult})
 
         # hunger + creature -> hunt (Only if prey is visible)
         if agent_type == "creature" and drives["hunger"] > 0.4:
@@ -166,14 +177,13 @@ class DesireSystem:
         # curiosity -> desire_explore
         desires.append({"goal": "explore", "utility": drives["curiosity"] * t_curiosity * bias_explore})
 
-        # social -> socialize
-        social_utility = drives["social"] * t_sociability
-        desires.append({"goal": "socialize", "utility": social_utility})
+        # Social -> socialize
+        desires.append({"goal": "socialize", "utility": drives["social"] * t_sociability})
 
-        # boredom -> idle
+        # Boredom -> idle
         desires.append({"goal": "idle", "utility": drives["boredom"] * t_laziness})
 
-        # compassion -> help
+        # Compassion -> help
         desires.append({"goal": "help", "utility": t_compassion * 0.5})
 
         self.candidate_desires = sorted(desires, key=lambda x: x["utility"], reverse=True)
@@ -182,88 +192,117 @@ class DesireSystem:
 class IntentionSystem:
     def __init__(self):
         self.current_intention: Optional[Dict] = None
+        self.failed_intentions: Dict[str, int] = {} # goal -> failure_count
 
     def commit(self, desires: List[Dict]):
-        if desires:
-            # Commit to the highest utility desire
-            self.current_intention = desires[0]
+        if not desires:
+            self.current_intention = None
+            return None
+            
+        # Add penalty to utilities based on failure counts
+        for d in desires:
+            goal = d["goal"]
+            fail_count = self.failed_intentions.get(goal, 0)
+            if fail_count > 0:
+                # Exponential decay penalty
+                d["utility"] *= (0.5 ** fail_count)
+        
+        # Re-sort after penalties
+        desires.sort(key=lambda x: x["utility"], reverse=True)
+        
+        # Commit to the highest utility desire
+        self.current_intention = desires[0]
         return self.current_intention
+
+    def report_failure(self):
+        if self.current_intention:
+            goal = self.current_intention["goal"]
+            self.failed_intentions[goal] = self.failed_intentions.get(goal, 0) + 1
+            self.current_intention = None
+
+    def report_success(self):
+        if self.current_intention:
+            goal = self.current_intention["goal"]
+            self.failed_intentions[goal] = 0
 
 class Planner:
     def __init__(self, rng: random.Random):
         self.current_plan: List[tuple] = [] # List of primitive actions
         self.plan_id: Optional[str] = None
         self.rng = rng
+        self.last_goal_pos: Optional[Tuple[int, int]] = None
 
     def generate_plan(self, intention: Dict, x: int, y: int, beliefs: BeliefSystem, agent_type: str, shared_beliefs: Optional[set] = None):
+        if not intention:
+            self.current_plan = [("idle", None)]
+            return self.current_plan
+
         self.plan_id = f"plan_{self.rng.randint(0, 99999)}"
         goal = intention["goal"]
         
         if goal == "eat":
             food_locs = [loc for loc, t in beliefs.known_locations.items() if t in ["food", "remains"]]
             if food_locs:
-                target = min(food_locs, key=lambda l: abs(l[0]-x) + abs(l[1]-y))
-                rtype = beliefs.known_locations[target]
-                action = "eat" if rtype == "food" else "eat_villager"
-                path = self._astar(x, y, target, beliefs)
-                if path:
-                    self.current_plan = [("move", p) for p in path] + [(action, target)]
-                else:
-                    self.current_plan = [("move", target), (action, target)] # Fallback
+                # Try targets until one is reachable
+                food_locs.sort(key=lambda l: abs(l[0]-x) + abs(l[1]-y))
+                for target in food_locs[:3]: # Check 3 nearest
+                    rtype = beliefs.known_locations[target]
+                    action = "eat" if rtype == "food" else "eat_villager"
+                    path = self._astar(x, y, target, beliefs)
+                    if path:
+                        self.current_plan = [("move", p) for p in path] + [(action, target)]
+                        return self.current_plan
+                
+                # If no path found to nearest targets, wander
+                self._generate_exploration_plan(x, y, beliefs)
             else:
-                self.current_plan = [("move_random", None)]
+                # No known food: Targeted Exploration Search
+                self._generate_exploration_plan(x, y, beliefs)
         elif goal == "socialize":
             if beliefs.known_agents:
-                target_agent = beliefs.known_agents[0]
-                tx, ty = target_agent["x"], target_agent["y"]
-                path = self._astar(x, y, (tx, ty), beliefs)
+                # Try to find a reachable agent
+                agents = sorted(beliefs.known_agents, key=lambda a: abs(a["x"]-x) + abs(a["y"]-y))
+                for target_agent in agents[:2]:
+                    tx, ty = target_agent["x"], target_agent["y"]
+                    path = self._astar(x, y, (tx, ty), beliefs)
+                    
+                    # Gossip logic
+                    s_set = shared_beliefs if shared_beliefs is not None else set()
+                    unshared = beliefs.get_interesting_beliefs(s_set)
+                    gossip_actions = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))] if unshared else []
+                    
+                    dist = abs(x - tx) + abs(y - ty)
+                    if path:
+                        self.current_plan = [("move", p) for p in path] + gossip_actions + [("socialize", target_agent["id"])]
+                        return self.current_plan
+                    elif dist <= 2:
+                        self.current_plan = gossip_actions + [("socialize", target_agent["id"])]
+                        return self.current_plan
                 
-                # Gossip logic: check for interesting things to say
-                s_set = shared_beliefs if shared_beliefs is not None else set()
-                unshared = beliefs.get_interesting_beliefs(s_set)
-                gossip_actions = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))] if unshared else []
-                
-                dist = abs(x - tx) + abs(y - ty)
-                if path:
-                    # We have a known path. Move, then interact.
-                    self.current_plan = [("move", p) for p in path] + gossip_actions + [("socialize", target_agent["id"])]
-                elif dist <= 2:
-                    # No path needed, we are already adjacent
-                    self.current_plan = gossip_actions + [("socialize", target_agent["id"])]
-                else:
-                    # Target is far and we don't know the path. Try to wander closer or explore.
-                    self.current_plan = [("move_random", None)]
+                self.current_plan = [("move_random", None)]
             else:
                 self.current_plan = [("move_random", None)]
         elif goal == "hunt":
-            # Target villagers
             target_ids = [a["id"] for a in beliefs.known_agents if "villager" in a["id"] or a.get("type") == "person"]
             if target_ids:
-                target_id = target_ids[0]
-                # Find target's last known pos
-                target_agent = next((a for a in beliefs.known_agents if a["id"] == target_id), None)
-                if target_agent:
+                # Try nearest targets
+                agents = [a for a in beliefs.known_agents if a["id"] in target_ids]
+                agents.sort(key=lambda a: abs(a["x"]-x) + abs(a["y"]-y))
+                
+                for target_agent in agents[:2]:
                     tx, ty = target_agent["x"], target_agent["y"]
                     path = self._astar(x, y, (tx, ty), beliefs)
                     if path:
-                        self.current_plan = [("move", p) for p in path] + [("kill_villager", target_id), ("eat_villager", target_id)]
-                    else:
-                        self.current_plan = [("move", (tx, ty)), ("kill_villager", target_id), ("eat_villager", target_id)]
-                else:
-                    self.current_plan = [("move_random", None)]
+                        self.current_plan = [("move", p) for p in path] + [("kill_villager", target_agent["id"]), ("eat_villager", target_agent["id"])]
+                        return self.current_plan
+                
+                self.current_plan = [("move_random", None)]
             else:
                 self.current_plan = [("move_random", None)]
         elif goal == "flee":
             if beliefs.known_carnage:
-                # Move away from nearest carnage
                 carnage_pos = list(beliefs.known_carnage)[0]
-                dx = x - carnage_pos[0]
-                dy = y - carnage_pos[1]
-                # Try to move away
-                target_x = x + (1 if dx >= 0 else -1) * 3
-                target_y = y + (1 if dy >= 0 else -1) * 3
                 self.current_plan = [("move_random", None), ("move_random", None)]
-                # Clear fear after fleeing
                 beliefs.known_carnage.clear()
             else:
                 self.current_plan = [("idle", None)]
@@ -274,26 +313,51 @@ class Planner:
                 s_set = shared_beliefs if shared_beliefs is not None else set()
                 unshared = beliefs.get_interesting_beliefs(s_set)
                 if unshared:
-                    target_agent = beliefs.known_agents[0]
-                    tx, ty = target_agent["x"], target_agent["y"]
-                    dist = abs(x - tx) + abs(y - ty)
-                    
-                    if dist <= 2:
-                        loc, rtype = unshared[0]
-                        self.current_plan = [("share_belief", (target_agent["id"], loc, rtype))]
-                    else:
-                        path = self._astar(x, y, (tx, ty), beliefs)
-                        if path:
-                            self.current_plan = [("move", p) for p in path] + [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
+                    agents = sorted(beliefs.known_agents, key=lambda a: abs(a["x"]-x) + abs(a["y"]-y))
+                    for target_agent in agents[:2]:
+                        tx, ty = target_agent["x"], target_agent["y"]
+                        dist = abs(x - tx) + abs(y - ty)
+                        if dist <= 2:
+                            self.current_plan = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
+                            return self.current_plan
                         else:
-                            self.current_plan = [("move_random", None)]
-                else:
-                    self.current_plan = [("move_random", None)]
+                            path = self._astar(x, y, (tx, ty), beliefs)
+                            if path:
+                                self.current_plan = [("move", p) for p in path] + [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
+                                return self.current_plan
+                self.current_plan = [("move_random", None)]
             else:
                 self.current_plan = [("move_random", None)]
         else:
             self.current_plan = [("idle", None)]
         return self.current_plan
+
+    def _generate_exploration_plan(self, x, y, beliefs: BeliefSystem):
+        """Generates a multi-step plan to move towards an unexplored area."""
+        # Pick 5 random distant tiles and see which one is walkable and far
+        best_target = None
+        max_dist = -1
+        
+        # We don't have world dimensions here, but we can guess or use terrain_kb bounds
+        # Simple: just pick random offsets and check terrain_kb
+        for _ in range(10):
+            tx = x + self.rng.randint(-15, 15)
+            ty = y + self.rng.randint(-15, 15)
+            # Only target tiles we know are walkable
+            if (tx, ty) in beliefs.terrain_kb and beliefs.terrain_kb[(tx, ty)] != "water":
+                dist = abs(tx - x) + abs(ty - y)
+                if dist > max_dist:
+                    max_dist = dist
+                    best_target = (tx, ty)
+        
+        if best_target:
+            path = self._astar(x, y, best_target, beliefs)
+            if path:
+                self.current_plan = [("move", p) for p in path]
+                return
+        
+        # Total fallback
+        self.current_plan = [("move_random", None)]
 
     def _astar(self, start_x, start_y, goal_pos, beliefs: BeliefSystem):
         import heapq

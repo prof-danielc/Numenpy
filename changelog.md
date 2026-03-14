@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-03-14
+### Added
+- **Robust Pathfinding & Failure Tracking**: Agents now track failed intentions and apply utility penalties to unreachable goals, preventing infinite "stalling" loops.
+- **Targeted Exploration**: Hungry agents now use multi-step pathfinding to reach distant, potentially fertile areas when searching for food.
+
+### Fixed
+- **Villager Starvation Regression**: Added a safety floor to the `patience` trait multiplier to ensure hunger drive is never completely suppressed.
+- **Refined Success Reporting**: "Success" is now only reported on terminal action completion, preventing random moves from prematurely clearing failure penalties.
+- **Planner Target Selection**: The planner now evaluates multiple nearby targets and only commits to reachable ones.
+
 ## [1.5.0] - 2026-03-14
 ### Added
 - **Detailed Death Logging**: The journal now distinguishes between "starvation" and "killed by [Creature ID]".

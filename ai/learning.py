@@ -74,10 +74,14 @@ class LearningSystem:
                 target_traits = TRAIT_MAP[intention].get(feedback_key, [])
                 for trait_name, sign in target_traits:
                     if trait_name in traits:
+                        old_val = traits[trait_name]
                         # ΔT = (α/5) * reward * trace_value * sign
-                        traits[trait_name] += trait_alpha * abs(reward) * value * sign
-                        # Hard clamp at [-1.0, 1.0]
-                        traits[trait_name] = max(-1.0, min(1.0, traits[trait_name]))
+                        shift = trait_alpha * abs(reward) * value * sign
+                        traits[trait_name] = max(-1.0, min(1.0, traits[trait_name] + shift))
+                        if abs(shift) > 0.01:
+                            print(f"[LEARNING] {self.agent_id} trait {trait_name}: {old_val:.2f} -> {traits[trait_name]:.2f} (Goal: {intention}, Reward: {reward})")
+            elif traits:
+                print(f"[LEARNING] {self.agent_id} feedback received but intention '{intention}' not in TRAIT_MAP")
 
     def get_bias(self, context: str, action: str) -> float:
         return self.behavior_matrix.get(context, {}).get(action, 1.0)

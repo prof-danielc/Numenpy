@@ -120,35 +120,52 @@ class GameVideo:
 
         # Moral Alignment Summary
         moral_traits = ["compassion", "generosity", "obedience", "gentleness", "diligence", "altruism", "empathy", "patience"]
-        avg_alignment = sum(agent.ai.traits.traits.get(t, 0.0) for t in moral_traits) / len(moral_traits)
-        align_str = "ANGELIC" if avg_alignment > 0.4 else "DIABOLIC" if avg_alignment < -0.4 else "NEUTRAL"
-        self.screen.blit(self.font_med.render(f"ALIGNMENT: {align_str} ({avg_alignment:.2f})", True, (255, 255, 200)), (start_x + 10, y))
-        y += 35
+        m_vals = [float(agent.ai.traits.traits.get(t, 0.0)) for t in moral_traits]
+        
+        # More sensitive calculation: 
+        # Average only traits that have moved from 0.0 significantly, 
+        # or use full average if none have moved.
+        sig_vals = [v for v in m_vals if abs(v) > 0.05]
+        avg_alignment = sum(sig_vals) / len(sig_vals) if sig_vals else (sum(m_vals) / len(m_vals))
+        
+        align_str = "ANGELIC" if avg_alignment > 0.15 else "DIABOLIC" if avg_alignment < -0.15 else "NEUTRAL"
+        align_color = (100, 255, 100) if align_str == "ANGELIC" else (255, 100, 100) if align_str == "DIABOLIC" else (255, 255, 200)
+        self.screen.blit(self.font_med.render(f"ALIGNMENT: {align_str} ({avg_alignment:.2f})", True, align_color), (start_x + 10, y))
+        y += 28
 
-        # Traits (Personal Variance) - 3 Columns
+        # Traits (Personal Variance) - 4 Columns for density
         self.screen.blit(self.font_med.render("TRAITS (Cognitive Core):", True, (255, 200, 100)), (start_x + 10, y))
-        y += 25
-        t_items = [(k, v) for k, v in agent.ai.traits.traits.items() if isinstance(v, (int, float))]
-        for i in range(0, len(t_items), 3):
-            for j in range(3):
+        y += 22
+        # Filter non-numeric traits for the dashboard
+        t_dash = {k: v for k, v in agent.ai.traits.traits.items() if isinstance(v, (int, float))}
+        t_items = list(t_dash.items())
+        for i in range(0, len(t_items), 4):
+            for j in range(4):
                 if i + j < len(t_items):
                     k, v = t_items[i+j]
-                    col_x = start_x + 15 + (j * 90)
-                    label = self.font_small.render(f"{k[:5]}: {v:.1f}", True, (200, 200, 200))
+                    col_x = start_x + 10 + (j * 72)
+                    v_num = float(v)
+                    label = self.font_small.render(f"{k[:4]}:{v_num:.1f}", True, (200, 200, 200))
                     self.screen.blit(label, (col_x, y))
-            y += 18
-        y += 15
+            y += 16
+        y += 10
 
         # Learning Biases (if creature)
         if hasattr(agent.ai, 'learning') and agent.ai.learning.behavior_matrix:
-            self.screen.blit(self.font_med.render("LEARNING BIASES (Habits):", True, (255, 200, 200)), (start_x + 10, y))
-            y += 25
+            self.screen.blit(self.font_med.render("HABITS (Learning Biases):", True, (255, 200, 200)), (start_x + 10, y))
+            y += 22
             raw_biases = agent.ai.learning.behavior_matrix.get("default", {})
             bias_items = list(raw_biases.items())
-            for goal, bias in bias_items[:6]: # Show top 6
-                label = self.font_small.render(f"{goal}: {bias:.2f}", True, (255, 255, 255))
-                self.screen.blit(label, (start_x + 20, y))
-                y += 20
+            # Show up to 8 biases in 2 columns
+            for i in range(0, min(8, len(bias_items)), 2):
+                for j in range(2):
+                    if i + j < len(bias_items):
+                        goal, bias = bias_items[i+j]
+                        b_val = float(bias)
+                        col_x = start_x + 15 + (j * 140)
+                        label = self.font_small.render(f"{goal[:12]}: {b_val:.2f}", True, (255, 255, 255))
+                        self.screen.blit(label, (col_x, y))
+                y += 18
 
     def _draw_debug_overlays(self, agent):
         # 1. Draw Intention Text above head

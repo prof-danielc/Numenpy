@@ -30,6 +30,12 @@ class AgentAI:
         # If the last action failed, we should flush existing plan and re-evaluate
         if last_result not in ["SUCCESS", "NONE"]:
             self.planner.current_plan = []
+            self.intentions.report_failure()
+        elif last_result == "SUCCESS":
+            # Only report success to the intention system if the plan is FULLY finished
+            # This prevents intermediate moves from clearing failure counts for unreachable targets
+            if not self.planner.current_plan:
+                self.intentions.report_success()
         
         # 3. Evaluate Desires
         candidate_desires = self.desires.evaluate(self.drives.drives, self.traits.traits, self.learning, self.agent_type, self.beliefs)

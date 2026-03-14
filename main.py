@@ -44,11 +44,11 @@ def handle_inputs(logic, journal, selected_agent, paused, debug_mode):
             if target_creature and not paused:
                 if event.key == pygame.K_s: # Slap
                     print(f"SLAP! {target_creature.agent_id}")
-                    target_creature.ai.learning.apply_feedback(target_creature.ai.planner.plan_id, -1.0)
+                    target_creature.ai.learning.apply_feedback(target_creature.ai.planner.plan_id, -1.0, target_creature.ai.traits.traits)
                     journal.record_event("player_feedback", "player", {"type": "slap", "target": target_creature.agent_id})
                 elif event.key == pygame.K_p: # Pet
                     print(f"PET! {target_creature.agent_id}")
-                    target_creature.ai.learning.apply_feedback(target_creature.ai.planner.plan_id, 1.0)
+                    target_creature.ai.learning.apply_feedback(target_creature.ai.planner.plan_id, 1.0, target_creature.ai.traits.traits)
                     journal.record_event("player_feedback", "player", {"type": "pet", "target": target_creature.agent_id})
         
     return running, selected_agent, paused, debug_mode
