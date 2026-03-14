@@ -124,11 +124,13 @@ class GameVideo:
         t_items = list(agent.ai.traits.traits.items())
         for i in range(0, len(t_items), 2):
             k1, v1 = t_items[i]
-            col1 = f"{k1[:3]}: {v1:.2f}"
+            val1_str = f"{v1:.2f}" if isinstance(v1, (int, float)) else str(v1)
+            col1 = f"{k1[:3]}: {val1_str}"
             self.screen.blit(self.font_small.render(col1, True, (200, 200, 200)), (start_x + 20, y))
             if i + 1 < len(t_items):
                 k2, v2 = t_items[i+1]
-                col2 = f"{k2[:3]}: {v2:.2f}"
+                val2_str = f"{v2:.2f}" if isinstance(v2, (int, float)) else str(v2)
+                col2 = f"{k2[:3]}: {val2_str}"
                 self.screen.blit(self.font_small.render(col2, True, (200, 200, 200)), (start_x + 140, y))
             y += 20
         y += 20
@@ -139,7 +141,7 @@ class GameVideo:
             y += 25
             # Simplified: just show a few biases
             bias_items = list(agent.ai.learning.behavior_matrix.get("default", {}).items())
-            for goal, bias in bias_items[:5]:
+            for goal, bias in bias_items:#bias_items[:5]:
                 label = self.font_small.render(f"{goal}: {bias:.2f}", True, (255, 255, 255))
                 self.screen.blit(label, (start_x + 20, y))
                 y += 20

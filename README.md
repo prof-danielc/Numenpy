@@ -7,7 +7,8 @@ Numenpy is a research-oriented simulation prototype inspired by games like *Blac
 - **BDI AI Architecture**: All agents (Villagers, Creatures) use a unified cognitive core including Beliefs, Desires, Intentions, Planning, and Learning.
 - **Interactive Training**: Slap or Pet your creature to influence its behavior using Goal-Aware Eligibility Traces for temporal credit assignment.
 - **Dynamic Terrain**: A grid-based hex-like world with elevation, water, and mountains that affect movement and planning.
-- **Biological Simulation**: Agents have internal drives (Hunger, Social, Boredom) that decay over time and drive their decision-making.
+- **Predation & Social Fear**: Creatures can develop "evil habits" by hunting villagers. The simulation tracks "carnage" and "remains", causing villagers to panic and flee when witnessing death.
+- **Event Journaling**: Every action and life event (including detailed death causes like starvation or violence) is recorded for replay and learning.
 - **Deterministic Replay**: The Global Event Journal records every logical event, enabling session persistence and reproducible debugging.
 
 ## 🚀 Getting Started

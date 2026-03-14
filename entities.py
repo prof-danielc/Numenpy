@@ -11,6 +11,7 @@ class Agent:
         self.trainable = False
         self.last_action_result = "NONE"
         self.shared_beliefs = set() # Track what we've already told others
+        self.killed_by = None # ID of agent that killed this one
         self.ai = AgentAI(agent_id, species_priors, seed=seed)
 
     def update(self, world, journal, agents: List = []):
@@ -40,11 +41,11 @@ class Agent:
 
 class Person(Agent):
     def __init__(self, agent_id: str, x: int, y: int, seed: int = 1337):
-        super().__init__(agent_id, x, y, species_priors={"aggression": 0.2, "curiosity": 0.8}, seed=seed)
+        super().__init__(agent_id, x, y, species_priors={"aggression": 0.2, "curiosity": 0.8, "type": "person"}, seed=seed)
         self.type = "person"
 
 class Creature(Agent):
     def __init__(self, agent_id: str, x: int, y: int, seed: int = 1337):
-        super().__init__(agent_id, x, y, species_priors={"aggression": 0.5, "curiosity": 0.9}, seed=seed)
+        super().__init__(agent_id, x, y, species_priors={"aggression": 0.5, "curiosity": 0.9, "type": "creature"}, seed=seed)
         self.type = "creature"
         self.trainable = True

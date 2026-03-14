@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-03-14
+### Added
+- **Detailed Death Logging**: The journal now distinguishes between "starvation" and "killed by [Creature ID]".
+- **Persistent Remains**: Agents killed by violence now leave consumable `remains` resources, ensuring predators have time to feed before the body disappears.
+- **Dynamic Prey Sensitivity**: The `hunt` goal now requires visible prey; agents will naturally revert to vegetation if no villagers are spotted.
+
+### Fixed
+- **TraitSystem Stability**: Prevented crashes when adding non-numeric traits (like `type`) to agents; randomization now safely ignores strings.
+- **Defensive Sidebar Formatting**: Fixed a `ValueError` in the Brain Monitor when attempting to format string traits as floats.
+- **Mass Starvation Regression**: Restored the core `eat` instinct that was accidentally deprioritized during predation tuning.
+- **Reinforcement Balancing**: Added reward feedback for eating vegetation to prevent "hunting addiction" from causing starvation.
+
+## [1.4.0] - 2026-03-14
+### Added
+- **Creature Evil Habits**: Creatures can now hunt, kill, and eat villagers.
+- **Biological Drives**: Hunger, energy, and social needs drive agent behavior.
+- **Predation & Social Fear**: Creatures can develop "evil habits" by hunting villagers, while villagers react to witnessed carnage.
+- **Event Journaling**: Every action and life event is recorded for replay and learning, tracking entity life cycles and social consequences.
+- **Brain Monitor Upgrades**: Intentions like "hunt" and "flee" now visible in debug overlays.
+
 ## [1.3.0] - 2026-03-14
 ### Added
 - **Visual Debugging Mode**: Press `D` to toggle the AI Brain Monitor and Map Overlays.

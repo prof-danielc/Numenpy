@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .learning import LearningSystem
 import random
@@ -8,10 +8,11 @@ class BeliefSystem:
         self.beliefs = {} # object_type -> affordances
         self.known_locations = {} # (x, y) -> object_type
         self.known_agents = []
+        self.known_carnage = set() # Locations of recent deaths
         self.terrain_kb = {} # (x, y) -> str
         self.elevation_kb = {} # (x, y) -> float
         
-    def update(self, x: int, y: int, neighbors: List, resources: List, agents: List = []):
+    def update(self, x: int, y: int, neighbors: List, resources: List, agents: List = [], events: List = []):
         # neighbors is now List of (x, y, ttype, elevation)
         for nx, ny, ttype, elev in neighbors:
             self.terrain_kb[(nx, ny)] = ttype
@@ -37,6 +38,14 @@ class BeliefSystem:
         
         for loc in stale_locs:
             self.known_locations.pop(loc, None)
+
+        # Track carnage/deaths within perception range
+        for event in events:
+            if event["event_type"] == "entity_death":
+                ex, ey = event["data"].get("x"), event["data"].get("y")
+                if ex is not None and ey is not None:
+                    if abs(ex - x) <= 5 and abs(ey - y) <= 5:
+                        self.known_carnage.add((ex, ey))
 
     def get_interesting_beliefs(self, shared_set: set):
         # TODO: brainstorming here 
@@ -87,22 +96,33 @@ class TraitSystem:
             
         # Individual Variance: +/- 20% randomization if rng is provided
         if rng:
-            for k in self.traits:
-                variance = (rng.random() * 0.4) - 0.2 # -0.2 to 0.2
-                self.traits[k] = max(0.0, min(1.0, self.traits[k] + variance))
+            for k, v in self.traits.items():
+                if isinstance(v, (int, float)):
+                    variance = (rng.random() * 0.4) - 0.2 # -0.2 to 0.2
+                    self.traits[k] = max(0.0, min(1.0, v + variance))
 
 class DesireSystem:
     def __init__(self):
         self.candidate_desires: List[Dict] = []
 
-    def evaluate(self, drives: Dict, traits: Dict, learning: 'LearningSystem') -> List[Dict]:
+    def evaluate(self, drives: Dict, traits: Dict, learning: 'LearningSystem', agent_type: str, beliefs: BeliefSystem) -> List[Dict]:
         desires = []
         # Bias from learning
         bias_eat = learning.get_bias("default", "eat")
         bias_explore = learning.get_bias("default", "explore")
-
-        # hunger -> desire_food (Lazy agents wait longer)
+        # hunger -> desire_food (All agents need to eat!)
         desires.append({"goal": "eat", "utility": drives["hunger"] * (1.2 - traits["laziness"]) * bias_eat})
+
+        # hunger + creature -> hunt (Only if prey is visible)
+        if agent_type == "creature" and drives["hunger"] > 0.4:
+            has_prey = any("villager" in a["id"] or a.get("type") == "person" for a in beliefs.known_agents)
+            if has_prey:
+                bias_hunt = learning.get_bias("default", "hunt")
+                desires.append({"goal": "hunt", "utility": drives["hunger"] * traits["aggression"] * 2.0 + bias_hunt})
+
+        # carnage + person -> flee
+        if agent_type == "person" and beliefs.known_carnage:
+            desires.append({"goal": "flee", "utility": 0.8}) # High priority fear
         
         # curiosity -> desire_explore (Brave agents explore more)
         desires.append({"goal": "explore", "utility": drives["curiosity"] * traits["curiosity"] * traits["bravery"] * bias_explore})
@@ -139,19 +159,21 @@ class Planner:
         self.plan_id: Optional[str] = None
         self.rng = rng
 
-    def generate_plan(self, intention: Dict, x: int, y: int, beliefs: BeliefSystem, shared_beliefs: Optional[set] = None):
+    def generate_plan(self, intention: Dict, x: int, y: int, beliefs: BeliefSystem, agent_type: str, shared_beliefs: Optional[set] = None):
         self.plan_id = f"plan_{self.rng.randint(0, 99999)}"
         goal = intention["goal"]
         
         if goal == "eat":
-            food_locs = [loc for loc, t in beliefs.known_locations.items() if t == "food"]
+            food_locs = [loc for loc, t in beliefs.known_locations.items() if t in ["food", "remains"]]
             if food_locs:
                 target = min(food_locs, key=lambda l: abs(l[0]-x) + abs(l[1]-y))
+                rtype = beliefs.known_locations[target]
+                action = "eat" if rtype == "food" else "eat_villager"
                 path = self._astar(x, y, target, beliefs)
                 if path:
-                    self.current_plan = [("move", p) for p in path] + [("eat", target)]
+                    self.current_plan = [("move", p) for p in path] + [(action, target)]
                 else:
-                    self.current_plan = [("move", target), ("eat", target)] # Fallback
+                    self.current_plan = [("move", target), (action, target)] # Fallback
             else:
                 self.current_plan = [("move_random", None)]
         elif goal == "socialize":
@@ -177,6 +199,38 @@ class Planner:
                     self.current_plan = [("move_random", None)]
             else:
                 self.current_plan = [("move_random", None)]
+        elif goal == "hunt":
+            # Target villagers
+            target_ids = [a["id"] for a in beliefs.known_agents if "villager" in a["id"] or a.get("type") == "person"]
+            if target_ids:
+                target_id = target_ids[0]
+                # Find target's last known pos
+                target_agent = next((a for a in beliefs.known_agents if a["id"] == target_id), None)
+                if target_agent:
+                    tx, ty = target_agent["x"], target_agent["y"]
+                    path = self._astar(x, y, (tx, ty), beliefs)
+                    if path:
+                        self.current_plan = [("move", p) for p in path] + [("kill_villager", target_id), ("eat_villager", target_id)]
+                    else:
+                        self.current_plan = [("move", (tx, ty)), ("kill_villager", target_id), ("eat_villager", target_id)]
+                else:
+                    self.current_plan = [("move_random", None)]
+            else:
+                self.current_plan = [("move_random", None)]
+        elif goal == "flee":
+            if beliefs.known_carnage:
+                # Move away from nearest carnage
+                carnage_pos = list(beliefs.known_carnage)[0]
+                dx = x - carnage_pos[0]
+                dy = y - carnage_pos[1]
+                # Try to move away
+                target_x = x + (1 if dx >= 0 else -1) * 3
+                target_y = y + (1 if dy >= 0 else -1) * 3
+                self.current_plan = [("move_random", None), ("move_random", None)]
+                # Clear fear after fleeing
+                beliefs.known_carnage.clear()
+            else:
+                self.current_plan = [("idle", None)]
         elif goal == "explore":
              self.current_plan = [("move_random", None)]
         elif goal == "help":
@@ -209,8 +263,8 @@ class Planner:
         import heapq
         start = (start_x, start_y)
         frontier = [(0, start)]
-        came_from = {start: None}
-        cost_so_far = {start: 0.0}
+        came_from: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {start: None}
+        cost_so_far: Dict[Tuple[int, int], float] = {start: 0.0}
         
         while frontier:
             _, current = heapq.heappop(frontier)
