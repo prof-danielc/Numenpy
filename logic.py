@@ -18,7 +18,7 @@ class GameLogic:
         # 2. Update all entities
         for entity in self.entities:
             # Physical hunger naturally increases (0.01 was too fast)
-            entity.hunger = min(1.0, entity.hunger + 0.0002)
+            entity.hunger = min(1.0, entity.hunger + 0.002)
             
             # Starvation damage
             if entity.hunger >= 0.95:

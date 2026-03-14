@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-03-14
+### Added
+- **Visual Debugging Mode**: Press `D` to toggle the AI Brain Monitor and Map Overlays.
+- **Enhanced Map Overlays**: Visualizes the selected agent's current path (yellow lines), target destination (red circle), and intention (floating labels).
+- **Sim Tick Counter**: Added a real-time tick counter to the UI to verify simulation state updates.
+- **Mass Spawning**: Increased initial village size to 10 villagers for richer social and resource-sharing simulations.
+
+### Fixed
+- **Perception-Belief Sync**: Agents now prune stale resource locations from their memory when they perceive the tile is empty.
+- **Sidebar Refresh Fix**: Resolved an issue where sidebar values appeared static; the UI now correctly refreshes every frame.
+- **Planner Action Fix**: Corrected a crash-inducing mismatch where the planner generated 'explore' instead of 'move_random'.
+- **Robust Debug Unpacking**: Fixed a `ValueError` crash when visualizing complex 3-tuple actions (like belief sharing).
+
 ## [1.2.0] - 2026-03-14
 ### Added
 - **Perception-Based Terrain Learning**: Agents now "see" and learn terrain within their full 5-tile perception range, enabling better long-distance pathfinding.

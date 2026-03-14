@@ -13,7 +13,7 @@ GRID_WIDTH = 40
 GRID_HEIGHT = 30
 FPS = 30
 
-def handle_inputs(logic, journal, selected_agent, paused):
+def handle_inputs(logic, journal, selected_agent, paused, debug_mode):
     running = True
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -24,11 +24,16 @@ def handle_inputs(logic, journal, selected_agent, paused):
             # Select agent at this tile
             selected_agent = next((e for e in logic.entities if e.x == gx and e.y == gy), None)
         elif event.type == pygame.KEYDOWN:
+            # Quit the game
             if event.key == pygame.K_ESCAPE:
                 running = False
+            # Pause the game
             elif event.key == pygame.K_SPACE:
                 paused = not paused
                 print("PAUSED" if paused else "RESUMED")
+            elif event.key == pygame.K_d:
+                debug_mode = not debug_mode
+                print("DEBUG MODE ON" if debug_mode else "DEBUG MODE OFF")
 
             # Target the selected creature or the first creature for feedback
             target_creature = selected_agent if getattr(selected_agent, 'type', '') == 'creature' else None
@@ -46,7 +51,7 @@ def handle_inputs(logic, journal, selected_agent, paused):
                     target_creature.ai.learning.apply_feedback(target_creature.ai.planner.plan_id, 1.0)
                     journal.record_event("player_feedback", "player", {"type": "pet", "target": target_creature.agent_id})
         
-    return running, selected_agent, paused
+    return running, selected_agent, paused, debug_mode
 
 def main():
     # Parse Args
@@ -80,27 +85,31 @@ def main():
     clock = pygame.time.Clock()
     
     # Spawn initial agents
-    vx, vy = world.find_random_land_tile()
-    logic.add_agent(Person("villager_1", vx, vy))
+    for i in range(10):
+        vx, vy = world.find_random_land_tile()
+        p1 = Person(f"villager_{i}", vx, vy)
+        logic.add_agent(p1)
     
     cx, cy = world.find_random_land_tile()
-    logic.add_agent(Creature("creature_1", cx, cy))
+    c1 = Creature("creature_1", cx, cy)
+    logic.add_agent(c1)
     
     running = True
     paused = False
-    selected_agent = None
+    debug_mode = True # Default to True to address user's initial desire
+    selected_agent = c1
     while running:
         # IPOS Loop
         
         # 1. Input
-        running, selected_agent, paused = handle_inputs(logic, journal, selected_agent, paused) 
+        running, selected_agent, paused, debug_mode = handle_inputs(logic, journal, selected_agent, paused, debug_mode) 
 
         # 2. Process
         if not paused:
             logic.update()
         
         # 3. Output
-        video.render(logic, selected_agent=selected_agent)
+        video.render(logic, selected_agent=selected_agent, debug_mode=debug_mode)
         if paused:
             # Overlay pause text
             overlay = pygame.Surface((GRID_WIDTH * 20, GRID_HEIGHT * 20), pygame.SRCALPHA)

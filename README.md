@@ -32,6 +32,7 @@ python main.py
 - **ESC**: Exit and save the session log.
 - **S Key**: Slap the selected creature (Punishment).
 - **P Key**: Pet the selected creature (Reward).
+- **D Key**: Toggle Visual Debugging Mode (AI Brain Monitor & Map Overlays).
 
 ## 🏗️ Architecture
 

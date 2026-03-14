@@ -24,6 +24,20 @@ class BeliefSystem:
         # Track other agents
         self.known_agents = agents 
 
+        # Prune stale beliefs (FR-015: Perception-Belief Sync)
+        # For every neighboring tile we can see, if we thought there was a resource there
+        # but it's not in the current 'resources' list, it must be gone.
+        visible_tiles = {(nx, ny) for nx, ny, ttype, elev in neighbors}
+        actual_resources = {(rx, ry) for rx, ry, rtype in resources}
+        
+        stale_locs = []
+        for loc, rtype in self.known_locations.items():
+            if loc in visible_tiles and loc not in actual_resources:
+                stale_locs.append(loc)
+        
+        for loc in stale_locs:
+            self.known_locations.pop(loc, None)
+
     def get_interesting_beliefs(self, shared_set: set):
         # TODO: brainstorming here 
         # instead of returning locations of a fixed resource (currently food)
@@ -139,7 +153,7 @@ class Planner:
                 else:
                     self.current_plan = [("move", target), ("eat", target)] # Fallback
             else:
-                self.current_plan = [("explore", None)]
+                self.current_plan = [("move_random", None)]
         elif goal == "socialize":
             if beliefs.known_agents:
                 target_agent = beliefs.known_agents[0]
