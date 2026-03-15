@@ -1,6 +1,22 @@
 # Changelog: Numenpy Prototype
 
 All notable changes to this project will be documented in this file.
+
+## [2.0.0] - 2026-03-15
+### Added
+- **Scalable Chunked Map System**: Moved from fixed grid to a sparse chunk-based storage architecture in `src/world.py`.
+- **RTS Camera Authority**: Centralized coordinate transforms and smooth navigation in `src/camera.py`.
+- **Procedural Island Generation**: Added `src/map_gen.py` to procedurally generate worlds with varied biomes and agent spawns.
+- **Rich Telemetry Sidebar**: Restored the agent status sidebar (Brain Monitor) with real-time drive and intention visualization.
+- **Rendering Polish**: Fixed sub-pixel terrain cracks and added toggleable debug outlines.
+
+### Changed
+- **Modular Refactor**: Moved core simulation files into the `src/` directory for better package management.
+- **Pydantic Migration**: Upgraded `MapLoader` internals to use modern `.model_dump()` standards.
+
+### Fixed
+- **Camera Boundary Lag**: Resolved "ghosting" lag by clamping camera target coordinates to the map edges.
+
 ## [1.7.0] - 2026-03-15
 ### Added
 - **Reproduction & Verification Suite**: Added `tests/test_angelic_behavior.py` to verify trait reinforcement and desire suppression logic.

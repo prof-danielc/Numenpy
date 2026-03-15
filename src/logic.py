@@ -7,6 +7,7 @@ class GameLogic:
 
     def add_agent(self, agent):
         self.entities.append(agent)
+        agent.register(self.world)
     
     def update(self):
         """Core simulation tick - NO PYGAME ALLOWED HERE"""
@@ -26,19 +27,7 @@ class GameLogic:
                 if self.tick_count % 10 == 0:
                     self.journal.log(entity.agent_id, "is starting to starve...")
             
-            # Sync AI with physical reality
-            nearby_terrain = self.world.get_terrain_nearby(entity.x, entity.y, radius=5)
-            nearby_resources = self.world.get_resources_nearby(entity.x, entity.y, radius=5)
-            
-            world_view = {
-                "neighbors": nearby_terrain, # AI.think expects a list of (x, y, type, elev)
-                "resources": nearby_resources,
-                "agents": [{"id": a.agent_id, "x": a.x, "y": a.y} for a in self.entities if a != entity and abs(a.x - entity.x) <= 5 and abs(a.y - entity.y) <= 5],
-                "physical_hunger": entity.hunger,
-                "recent_events": self.journal.get_recent_events(limit=20)
-            }
-            
-            plan = entity.ai.think(entity.x, entity.y, world_view, last_result=entity.last_action_result, shared_beliefs=entity.shared_beliefs)
+            plan = entity.update(self.world, self.journal) # Delegated to entity.update
             if plan:
                 self._execute_action(entity, plan)
             
@@ -77,7 +66,7 @@ class GameLogic:
                 if hasattr(agent.ai, 'drives'):
                     agent.ai.drives.drives["hunger"] += 0.005 * (1.0 + diff * 5.0)
                 
-                agent.x, agent.y = tx, ty
+                agent.move_to(tx, ty, self.world) # Updated to move_to
                 if hasattr(agent.ai, 'drives'):
                     agent.ai.drives.drives["curiosity"] = max(0.0, agent.ai.drives.drives["curiosity"] - 0.2)
                 result = "SUCCESS"
