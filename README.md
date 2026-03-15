@@ -8,6 +8,8 @@ Numenpy is a research-oriented simulation prototype inspired by games like *Blac
 - **Interactive Training**: Slap or Pet your creature to influence its behavior using Goal-Aware Eligibility Traces for temporal credit assignment.
 - **Dynamic Terrain**: A grid-based hex-like world with elevation, water, and mountains that affect movement and planning.
 - **Biological Simulation**: Agents have internal drives (Hunger, Social, Boredom) that decay over time and drive their decision-making.
+- **Detailed Death Logging**: The journal records specific death causes (starvation vs. violence) and tracks "carnage" and "remains" for predators.
+- **Robust Pathfinding & Exploration**: Agents detect unreachable goals, penalize failing intentions, and use targeted multi-step exploration to find resources efficiently in sparse environments.
 - **Deterministic Replay**: The Global Event Journal records every logical event, enabling session persistence and reproducible debugging.
 
 ## 🚀 Getting Started
