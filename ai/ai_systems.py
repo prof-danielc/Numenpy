@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, TYPE_CHECKING
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 if TYPE_CHECKING:
     from .learning import LearningSystem
 import random
@@ -8,10 +8,11 @@ class BeliefSystem:
         self.beliefs = {} # object_type -> affordances
         self.known_locations = {} # (x, y) -> object_type
         self.known_agents = []
+        self.known_carnage = set() # Locations of recent deaths
         self.terrain_kb = {} # (x, y) -> str
         self.elevation_kb = {} # (x, y) -> float
         
-    def update(self, x: int, y: int, neighbors: List, resources: List, agents: List = []):
+    def update(self, x: int, y: int, neighbors: List, resources: List, agents: List = [], events: List = []):
         # neighbors is now List of (x, y, ttype, elevation)
         for nx, ny, ttype, elev in neighbors:
             self.terrain_kb[(nx, ny)] = ttype
@@ -37,6 +38,14 @@ class BeliefSystem:
         
         for loc in stale_locs:
             self.known_locations.pop(loc, None)
+
+        # Track carnage/deaths within perception range
+        for event in events:
+            if event["event_type"] == "entity_death":
+                ex, ey = event["data"].get("x"), event["data"].get("y")
+                if ex is not None and ey is not None:
+                    if abs(ex - x) <= 5 and abs(ey - y) <= 5:
+                        self.known_carnage.add((ex, ey))
 
     def get_interesting_beliefs(self, shared_set: set):
         # TODO: brainstorming here 
@@ -68,115 +77,235 @@ class DriveSystem:
         self.drives["boredom"] += 0.005
         self.drives["curiosity"] += 0.002
         self.drives["social"] += 0.003
-        # Normalize
+        # Normalize and cap
+        for k in self.drives:
+            self.drives[k] = max(0.0, min(1.0, self.drives[k]))
         for k in self.drives:
             self.drives[k] = max(0.0, min(1.0, self.drives[k]))
 
 class TraitSystem:
     def __init__(self, species_priors: Optional[Dict] = None, rng: Optional[random.Random] = None):
+        # Continuous traits in range [-1.0, +1.0]
+        # Positive values = Good/Pro-social, Negative values = Evil/Selfish
         self.traits = {
-            "aggression": 0.5,
-            "compassion": 0.5,
+            # Good/Evil Axis (Paired)
+            "compassion": 0.0,  # +: Compassion, -: Cruelty
+            "generosity": 0.0,   # +: Generosity, -: Greed
+            "obedience": 0.0,    # +: Obedience, -: Arrogance
+            "gentleness": 0.0,   # +: Gentleness, -: Aggression
+            "diligence": 0.0,    # +: Diligence, -: Laziness
+            "altruism": 0.0,     # +: Altruism, -: Dominance
+            "empathy": 0.0,
+            "gratitude": 0.0,
+            "patience": 0.0,     # +: Patience, -: Vindictiveness
+            "temperance": 0.0,
+            "protectiveness": 0.0,
+            "cleanliness": 0.0,
+            
+            # Additional Evil/Selfish mappings (can be independent or negative offsets)
+            "sadism": 0.0,
+            "deceitfulness": 0.0,
+            "gluttony": 0.0,
+            "destructiveness": 0.0,
+            "neglectfulness": 0.0,
+            "corruption": 0.0,
+
+            # Neutral / Personality Traits (Style)
             "curiosity": 0.5,
-            "friendliness": 0.5,
-            "laziness": 0.2,
-            "bravery": 0.5
+            "playfulness": 0.5,
+            "fearfulness": 0.5,
+            "boldness": 0.5,
+            "sociability": 0.5,
+            "focus": 0.5,
+            "adaptability": 0.5
         }
         if species_priors:
             self.traits.update(species_priors)
             
-        # Individual Variance: +/- 20% randomization if rng is provided
+        # Individual Variance: +/- 0.4 randomization if rng is provided
         if rng:
-            for k in self.traits:
-                variance = (rng.random() * 0.4) - 0.2 # -0.2 to 0.2
-                self.traits[k] = max(0.0, min(1.0, self.traits[k] + variance))
+            for k, v in self.traits.items():
+                if isinstance(v, (int, float)):
+                    variance = (rng.random() * 0.4) - 0.2
+                    self.traits[k] = max(-1.0, min(1.0, v + variance))
 
 class DesireSystem:
     def __init__(self):
         self.candidate_desires: List[Dict] = []
 
-    def evaluate(self, drives: Dict, traits: Dict, learning: 'LearningSystem') -> List[Dict]:
+    def evaluate(self, drives: Dict, traits: Dict, learning: 'LearningSystem', agent_type: str, beliefs: BeliefSystem) -> List[Dict]:
         desires = []
-        # Bias from learning
+        # Bias from learning (Habits)
         bias_eat = learning.get_bias("default", "eat")
         bias_explore = learning.get_bias("default", "explore")
 
-        # hunger -> desire_food (Lazy agents wait longer)
-        desires.append({"goal": "eat", "utility": drives["hunger"] * (1.2 - traits["laziness"]) * bias_eat})
-        
-        # curiosity -> desire_explore (Brave agents explore more)
-        desires.append({"goal": "explore", "utility": drives["curiosity"] * traits["curiosity"] * traits["bravery"] * bias_explore})
-        
-        # social -> socialize (Friendly agents prioritize social, boost if we have gossip)
-        social_utility = drives["social"] * traits["friendliness"]
-        # Boost if we have unshared interesting beliefs
-        # Note: DesireSystem doesn't have access to Agent but we can pass shared_set or just assume
-        # For now, let's just use the basic utility and let Planner handle the action choice.
-        desires.append({"goal": "socialize", "utility": social_utility})
+        # Trait mappings (Mapping [-1, 1] to [0, 2] multipliers roughly)
+        # 1.0 + trait allows 0.0 to 2.0 range (Neutral is 1.0)
+        t_compassion = 1.0 + traits.get("compassion", 0.0)
+        t_gentleness = 1.0 + traits.get("gentleness", 0.0)
+        t_patience = 1.0 + traits.get("patience", 0.0)
+        t_curiosity = 1.0 + traits.get("curiosity", 0.0)
+        t_sociability = 1.0 + traits.get("sociability", 0.0)
+        t_laziness = 1.0 - traits.get("diligence", 0.0) # diligent -> low laziness
+        t_obedience = 1.0 + traits.get("obedience", 0.0)
 
-        # boredom -> idle (Lazy agents idle more)
-        desires.append({"goal": "idle", "utility": drives["boredom"] * traits["laziness"]})
-
-        # compassion -> help
-        desires.append({"goal": "help", "utility": traits["compassion"] * 0.5})
+        # hunger -> desire_food (Survival boost)
+        # Non-linear boost after 0.6 hunger to prevent starvation
+        survival_mult = 1.0
+        if drives["hunger"] > 0.6:
+            survival_mult = 1.0 + (drives["hunger"] - 0.6) * 15.0 # Even more aggressive boost
+        if drives["hunger"] > 0.85:
+            survival_mult *= 5.0 # Emergency priority
         
+        # Ensure patience doesn't zero out hunger drive (floor 0.2)
+        patience_factor = max(0.2, 2.0 - t_patience)
+        desires.append({"goal": "eat", "utility": drives["hunger"] * patience_factor * bias_eat * survival_mult})
+
+        # hunger + creature -> hunt (Only if prey is visible)
+        if agent_type == "creature" and drives["hunger"] > 0.4:
+            has_prey = any("villager" in a["id"] or a.get("type") == "person" for a in beliefs.known_agents)
+            if has_prey:
+                bias_hunt = learning.get_bias("default", "hunt")
+                # High Aggression (negative gentleness) increases hunt utility
+                aggression_factor = 2.0 - t_gentleness
+                desires.append({"goal": "hunt", "utility": drives["hunger"] * aggression_factor * 2.0 + bias_hunt})
+
+        # carnage + person -> flee
+        if agent_type == "person" and beliefs.known_carnage:
+            desires.append({"goal": "flee", "utility": 1.2}) # High priority fear
+
+        # curiosity -> desire_explore
+        desires.append({"goal": "explore", "utility": drives["curiosity"] * t_curiosity * bias_explore})
+
+        # Social -> socialize
+        desires.append({"goal": "socialize", "utility": drives["social"] * t_sociability})
+
+        # Boredom -> idle
+        desires.append({"goal": "idle", "utility": drives["boredom"] * t_laziness})
+
+        # Compassion -> help
+        desires.append({"goal": "help", "utility": t_compassion * 0.5})
+
         self.candidate_desires = sorted(desires, key=lambda x: x["utility"], reverse=True)
         return self.candidate_desires
 
 class IntentionSystem:
     def __init__(self):
         self.current_intention: Optional[Dict] = None
+        self.failed_intentions: Dict[str, int] = {} # goal -> failure_count
 
     def commit(self, desires: List[Dict]):
-        if desires:
-            # Commit to the highest utility desire
-            self.current_intention = desires[0]
+        if not desires:
+            self.current_intention = None
+            return None
+            
+        # Add penalty to utilities based on failure counts
+        for d in desires:
+            goal = d["goal"]
+            fail_count = self.failed_intentions.get(goal, 0)
+            if fail_count > 0:
+                # Exponential decay penalty
+                d["utility"] *= (0.5 ** fail_count)
+        
+        # Re-sort after penalties
+        desires.sort(key=lambda x: x["utility"], reverse=True)
+        
+        # Commit to the highest utility desire
+        self.current_intention = desires[0]
         return self.current_intention
+
+    def report_failure(self):
+        if self.current_intention:
+            goal = self.current_intention["goal"]
+            self.failed_intentions[goal] = self.failed_intentions.get(goal, 0) + 1
+            self.current_intention = None
+
+    def report_success(self):
+        if self.current_intention:
+            goal = self.current_intention["goal"]
+            self.failed_intentions[goal] = 0
 
 class Planner:
     def __init__(self, rng: random.Random):
         self.current_plan: List[tuple] = [] # List of primitive actions
         self.plan_id: Optional[str] = None
         self.rng = rng
+        self.last_goal_pos: Optional[Tuple[int, int]] = None
 
-    def generate_plan(self, intention: Dict, x: int, y: int, beliefs: BeliefSystem, shared_beliefs: Optional[set] = None):
+    def generate_plan(self, intention: Dict, x: int, y: int, beliefs: BeliefSystem, agent_type: str, shared_beliefs: Optional[set] = None):
+        if not intention:
+            self.current_plan = [("idle", None)]
+            return self.current_plan
+
         self.plan_id = f"plan_{self.rng.randint(0, 99999)}"
         goal = intention["goal"]
         
         if goal == "eat":
-            food_locs = [loc for loc, t in beliefs.known_locations.items() if t == "food"]
+            food_locs = [loc for loc, t in beliefs.known_locations.items() if t in ["food", "remains"]]
             if food_locs:
-                target = min(food_locs, key=lambda l: abs(l[0]-x) + abs(l[1]-y))
-                path = self._astar(x, y, target, beliefs)
-                if path:
-                    self.current_plan = [("move", p) for p in path] + [("eat", target)]
-                else:
-                    self.current_plan = [("move", target), ("eat", target)] # Fallback
+                # Try targets until one is reachable
+                food_locs.sort(key=lambda l: abs(l[0]-x) + abs(l[1]-y))
+                for target in food_locs[:3]: # Check 3 nearest
+                    rtype = beliefs.known_locations[target]
+                    action = "eat" if rtype == "food" else "eat_villager"
+                    path = self._astar(x, y, target, beliefs)
+                    if path:
+                        self.current_plan = [("move", p) for p in path] + [(action, target)]
+                        return self.current_plan
+                
+                # If no path found to nearest targets, wander
+                self._generate_exploration_plan(x, y, beliefs)
             else:
-                self.current_plan = [("move_random", None)]
+                # No known food: Targeted Exploration Search
+                self._generate_exploration_plan(x, y, beliefs)
         elif goal == "socialize":
             if beliefs.known_agents:
-                target_agent = beliefs.known_agents[0]
-                tx, ty = target_agent["x"], target_agent["y"]
-                path = self._astar(x, y, (tx, ty), beliefs)
+                # Try to find a reachable agent
+                agents = sorted(beliefs.known_agents, key=lambda a: abs(a["x"]-x) + abs(a["y"]-y))
+                for target_agent in agents[:2]:
+                    tx, ty = target_agent["x"], target_agent["y"]
+                    path = self._astar(x, y, (tx, ty), beliefs)
+                    
+                    # Gossip logic
+                    s_set = shared_beliefs if shared_beliefs is not None else set()
+                    unshared = beliefs.get_interesting_beliefs(s_set)
+                    gossip_actions = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))] if unshared else []
+                    
+                    dist = abs(x - tx) + abs(y - ty)
+                    if path:
+                        self.current_plan = [("move", p) for p in path] + gossip_actions + [("socialize", target_agent["id"])]
+                        return self.current_plan
+                    elif dist <= 2:
+                        self.current_plan = gossip_actions + [("socialize", target_agent["id"])]
+                        return self.current_plan
                 
-                # Gossip logic: check for interesting things to say
-                s_set = shared_beliefs if shared_beliefs is not None else set()
-                unshared = beliefs.get_interesting_beliefs(s_set)
-                gossip_actions = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))] if unshared else []
-                
-                dist = abs(x - tx) + abs(y - ty)
-                if path:
-                    # We have a known path. Move, then interact.
-                    self.current_plan = [("move", p) for p in path] + gossip_actions + [("socialize", target_agent["id"])]
-                elif dist <= 2:
-                    # No path needed, we are already adjacent
-                    self.current_plan = gossip_actions + [("socialize", target_agent["id"])]
-                else:
-                    # Target is far and we don't know the path. Try to wander closer or explore.
-                    self.current_plan = [("move_random", None)]
+                self.current_plan = [("move_random", None)]
             else:
                 self.current_plan = [("move_random", None)]
+        elif goal == "hunt":
+            target_ids = [a["id"] for a in beliefs.known_agents if "villager" in a["id"] or a.get("type") == "person"]
+            if target_ids:
+                # Try nearest targets
+                agents = [a for a in beliefs.known_agents if a["id"] in target_ids]
+                agents.sort(key=lambda a: abs(a["x"]-x) + abs(a["y"]-y))
+                
+                for target_agent in agents[:2]:
+                    tx, ty = target_agent["x"], target_agent["y"]
+                    path = self._astar(x, y, (tx, ty), beliefs)
+                    if path:
+                        self.current_plan = [("move", p) for p in path] + [("kill_villager", target_agent["id"]), ("eat_villager", target_agent["id"])]
+                        return self.current_plan
+                
+                self.current_plan = [("move_random", None)]
+            else:
+                self.current_plan = [("move_random", None)]
+        elif goal == "flee":
+            if beliefs.known_carnage:
+                carnage_pos = list(beliefs.known_carnage)[0]
+                self.current_plan = [("move_random", None), ("move_random", None)]
+                beliefs.known_carnage.clear()
+            else:
+                self.current_plan = [("idle", None)]
         elif goal == "explore":
              self.current_plan = [("move_random", None)]
         elif goal == "help":
@@ -184,33 +313,58 @@ class Planner:
                 s_set = shared_beliefs if shared_beliefs is not None else set()
                 unshared = beliefs.get_interesting_beliefs(s_set)
                 if unshared:
-                    target_agent = beliefs.known_agents[0]
-                    tx, ty = target_agent["x"], target_agent["y"]
-                    dist = abs(x - tx) + abs(y - ty)
-                    
-                    if dist <= 2:
-                        loc, rtype = unshared[0]
-                        self.current_plan = [("share_belief", (target_agent["id"], loc, rtype))]
-                    else:
-                        path = self._astar(x, y, (tx, ty), beliefs)
-                        if path:
-                            self.current_plan = [("move", p) for p in path] + [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
+                    agents = sorted(beliefs.known_agents, key=lambda a: abs(a["x"]-x) + abs(a["y"]-y))
+                    for target_agent in agents[:2]:
+                        tx, ty = target_agent["x"], target_agent["y"]
+                        dist = abs(x - tx) + abs(y - ty)
+                        if dist <= 2:
+                            self.current_plan = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
+                            return self.current_plan
                         else:
-                            self.current_plan = [("move_random", None)]
-                else:
-                    self.current_plan = [("move_random", None)]
+                            path = self._astar(x, y, (tx, ty), beliefs)
+                            if path:
+                                self.current_plan = [("move", p) for p in path] + [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
+                                return self.current_plan
+                self.current_plan = [("move_random", None)]
             else:
                 self.current_plan = [("move_random", None)]
         else:
             self.current_plan = [("idle", None)]
         return self.current_plan
 
+    def _generate_exploration_plan(self, x, y, beliefs: BeliefSystem):
+        """Generates a multi-step plan to move towards an unexplored area."""
+        # Pick 5 random distant tiles and see which one is walkable and far
+        best_target = None
+        max_dist = -1
+        
+        # We don't have world dimensions here, but we can guess or use terrain_kb bounds
+        # Simple: just pick random offsets and check terrain_kb
+        for _ in range(10):
+            tx = x + self.rng.randint(-15, 15)
+            ty = y + self.rng.randint(-15, 15)
+            # Only target tiles we know are walkable
+            if (tx, ty) in beliefs.terrain_kb and beliefs.terrain_kb[(tx, ty)] != "water":
+                dist = abs(tx - x) + abs(ty - y)
+                if dist > max_dist:
+                    max_dist = dist
+                    best_target = (tx, ty)
+        
+        if best_target:
+            path = self._astar(x, y, best_target, beliefs)
+            if path:
+                self.current_plan = [("move", p) for p in path]
+                return
+        
+        # Total fallback
+        self.current_plan = [("move_random", None)]
+
     def _astar(self, start_x, start_y, goal_pos, beliefs: BeliefSystem):
         import heapq
         start = (start_x, start_y)
         frontier = [(0, start)]
-        came_from = {start: None}
-        cost_so_far = {start: 0.0}
+        came_from: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {start: None}
+        cost_so_far: Dict[Tuple[int, int], float] = {start: 0.0}
         
         while frontier:
             _, current = heapq.heappop(frontier)

@@ -34,7 +34,8 @@ class GameLogic:
                 "neighbors": nearby_terrain, # AI.think expects a list of (x, y, type, elev)
                 "resources": nearby_resources,
                 "agents": [{"id": a.agent_id, "x": a.x, "y": a.y} for a in self.entities if a != entity and abs(a.x - entity.x) <= 5 and abs(a.y - entity.y) <= 5],
-                "physical_hunger": entity.hunger
+                "physical_hunger": entity.hunger,
+                "recent_events": self.journal.get_recent_events(limit=20)
             }
             
             plan = entity.ai.think(entity.x, entity.y, world_view, last_result=entity.last_action_result, shared_beliefs=entity.shared_beliefs)
@@ -46,7 +47,18 @@ class GameLogic:
         if len(alive_agents) < len(self.entities):
             for a in self.entities:
                 if a.energy <= 0:
-                    self.journal.log(a.agent_id, "has perished from hunger.")
+                    cause = "starvation"
+                    if a.killed_by:
+                        cause = f"killed by {a.killed_by}"
+                        # Spawn remains for predators to eat later
+                        self.world.resources.append((a.x, a.y, "remains"))
+                    
+                    self.journal.record_event("entity_death", a.agent_id, {
+                        "x": a.x, "y": a.y, 
+                        "type": a.type if hasattr(a, 'type') else "unknown",
+                        "cause": cause
+                    })
+                    self.journal.log(a.agent_id, f"has perished (Cause: {cause}).")
         self.entities = alive_agents
 
     def _execute_action(self, agent, plan):
@@ -66,6 +78,8 @@ class GameLogic:
                     agent.ai.drives.drives["hunger"] += 0.005 * (1.0 + diff * 5.0)
                 
                 agent.x, agent.y = tx, ty
+                if hasattr(agent.ai, 'drives'):
+                    agent.ai.drives.drives["curiosity"] = max(0.0, agent.ai.drives.drives["curiosity"] - 0.2)
                 result = "SUCCESS"
             else:
                 result = "IMPASSABLE"
@@ -74,6 +88,8 @@ class GameLogic:
             neighbors = self.world.get_neighbors(agent.x, agent.y)
             if neighbors:
                 agent.x, agent.y = random.choice(neighbors)
+                if hasattr(agent.ai, 'drives'):
+                    agent.ai.drives.drives["curiosity"] = max(0.0, agent.ai.drives.drives["curiosity"] - 0.4)
                 result = "SUCCESS"
         elif action_type == "eat":
             # Check if food is still there
@@ -84,6 +100,8 @@ class GameLogic:
                     if abs(agent.x - rx) <= 1 and abs(agent.y - ry) <= 1:
                         self.world.resources.pop(i)
                         agent.hunger = max(0.0, agent.hunger - 0.5)
+                        if hasattr(agent.ai, 'learning'):
+                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 1.5, agent.ai.traits.traits)
                         food_found = True
                         result = "SUCCESS"
                         break
@@ -94,10 +112,13 @@ class GameLogic:
             target_id = target
             target_agent = next((e for e in self.entities if e.agent_id == target_id), None)
             if target_agent and abs(agent.x - target_agent.x) <= 1 and abs(agent.y - target_agent.y) <= 1:
-                agent.ai.drives.drives["social"] = max(0.0, agent.ai.drives.drives["social"] - 0.5)
+                if hasattr(agent.ai, 'drives'):
+                    agent.ai.drives.drives["social"] = max(0.0, agent.ai.drives.drives["social"] - 0.5)
+                    agent.ai.drives.drives["boredom"] = max(0.0, agent.ai.drives.drives["boredom"] - 0.5)
                 # Reciprocal benefit
                 if hasattr(target_agent.ai.drives, 'drives'):
                     target_agent.ai.drives.drives["social"] = max(0.0, target_agent.ai.drives.drives["social"] - 0.3)
+                    target_agent.ai.drives.drives["boredom"] = max(0.0, target_agent.ai.drives.drives["boredom"] - 0.3)
                 result = "SUCCESS"
             else:
                 result = "MISSING"
@@ -112,7 +133,39 @@ class GameLogic:
             else:
                 result = "MISSING"
         elif action_type == "idle":
+            if hasattr(agent.ai, 'drives'):
+                agent.ai.drives.drives["boredom"] = max(0.0, agent.ai.drives.drives["boredom"] - 0.2)
             result = "SUCCESS"
+        elif action_type == "kill_villager":
+            # Target is a villager ID
+            target_agent = next((e for e in self.entities if e.agent_id == target), None)
+            if target_agent and hasattr(target_agent, 'type') and target_agent.type == "person":
+                if abs(agent.x - target_agent.x) <= 1 and abs(agent.y - target_agent.y) <= 1:
+                    target_agent.energy = 0 # Instant kill for now
+                    target_agent.killed_by = agent.agent_id # Track perpetrator
+                    result = "SUCCESS"
+                else:
+                    result = "TOO_FAR"
+            else:
+                result = "INVALID_TARGET"
+        elif action_type == "eat_villager":
+            # Check for "remains" resource at target location
+            # Target for eat_villager is usually the same as the kill target (the dead agent's ID)
+            # But remains are at a location. Let's find agent's current location or target's last known.
+            # Simplified: just look for 'remains' in adjacent tiles.
+            remains_found = False
+            for i, (rx, ry, rtype) in enumerate(self.world.resources):
+                if rtype == "remains":
+                    if abs(agent.x - rx) <= 1 and abs(agent.y - ry) <= 1:
+                        self.world.resources.pop(i)
+                        agent.hunger = max(0.0, agent.hunger - 0.7)
+                        if hasattr(agent.ai, 'learning'):
+                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 2.0, agent.ai.traits.traits)
+                        remains_found = True
+                        result = "SUCCESS"
+                        break
+            if not remains_found:
+                result = "MISSING"
         
         # Journal the action
         self.journal.record_event(

@@ -14,10 +14,11 @@ class AgentAI:
         self.intentions = IntentionSystem()
         self.planner = Planner(self.rng)
         self.learning = LearningSystem(agent_id)
+        self.agent_type = species_priors.get("type", "unknown") if species_priors else "unknown"
         
     def think(self, x: int, y: int, world_view: dict, last_result: str = "NONE", shared_beliefs: Optional[set] = None):
         # 1. Update Beliefs
-        self.beliefs.update(x, y, world_view["neighbors"], world_view["resources"], world_view.get("agents", []))
+        self.beliefs.update(x, y, world_view["neighbors"], world_view["resources"], world_view.get("agents", []), world_view.get("recent_events", []))
         
         # 2. Update Drives
         self.drives.update()
@@ -29,15 +30,21 @@ class AgentAI:
         # If the last action failed, we should flush existing plan and re-evaluate
         if last_result not in ["SUCCESS", "NONE"]:
             self.planner.current_plan = []
+            self.intentions.report_failure()
+        elif last_result == "SUCCESS":
+            # Only report success to the intention system if the plan is FULLY finished
+            # This prevents intermediate moves from clearing failure counts for unreachable targets
+            if not self.planner.current_plan:
+                self.intentions.report_success()
         
         # 3. Evaluate Desires
-        candidate_desires = self.desires.evaluate(self.drives.drives, self.traits.traits, self.learning)
+        candidate_desires = self.desires.evaluate(self.drives.drives, self.traits.traits, self.learning, self.agent_type, self.beliefs)
         
         # 4. Commit to Intention if no active plan
         if not self.planner.current_plan:
             intention = self.intentions.commit(candidate_desires)
             if intention:
-                self.planner.generate_plan(intention, x, y, self.beliefs, shared_beliefs=shared_beliefs)
+                self.planner.generate_plan(intention, x, y, self.beliefs, self.agent_type, shared_beliefs=shared_beliefs)
         
         # 5. Record action if plan exists (for credit assignment)
         if self.planner.current_plan and self.planner.plan_id:
