@@ -166,8 +166,10 @@ class DesireSystem:
             has_prey = any("villager" in a["id"] or a.get("type") == "person" for a in beliefs.known_agents)
             if has_prey:
                 bias_hunt = learning.get_bias("default", "hunt")
-                # High Aggression (negative gentleness) increases hunt utility
-                aggression_factor = 2.0 - t_gentleness
+                # High Gentleness (low aggression) strongly suppresses hunt utility
+                # 2.0 - t_gentleness: if gentleness is 1.0 (t_gentleness=2.0), factor is 0.0
+                # Using a power function for even stronger suppression for "angelic" types
+                aggression_factor = max(0.0, 2.0 - t_gentleness) ** 2
                 desires.append({"goal": "hunt", "utility": drives["hunger"] * aggression_factor * 2.0 + bias_hunt})
 
         # carnage + person -> flee
@@ -183,8 +185,8 @@ class DesireSystem:
         # Boredom -> idle
         desires.append({"goal": "idle", "utility": drives["boredom"] * t_laziness})
 
-        # Compassion -> help
-        desires.append({"goal": "help", "utility": t_compassion * 0.5})
+        # Compassion -> help (Stronger boost for high compassion)
+        desires.append({"goal": "help", "utility": t_compassion * 1.2})
 
         self.candidate_desires = sorted(desires, key=lambda x: x["utility"], reverse=True)
         return self.candidate_desires

@@ -1,8 +1,15 @@
 # Changelog: Numenpy Prototype
 
 All notable changes to this project will be documented in this file.
+## [1.7.0] - 2026-03-15
+### Added
+- **Reproduction & Verification Suite**: Added `tests/test_angelic_behavior.py` to verify trait reinforcement and desire suppression logic.
 
-## [1.6.0] - 2026-03-14
+### Fixed
+- **Angelic Predator Behavior**: 
+    - Corrected `TRAIT_MAP` reinforcement; hunting villagers now correctly decreases pro-social traits (Gentleness, Compassion).
+    - Strengthened behavioral inhibition; high Gentleness now more aggressively suppresses the "hunt" desire.
+    - Rebalanced reward structure; natural vegetation is now more "intrinsically" rewarding (2.0) than villager predation (1.0).
 ### Added
 - **Robust Pathfinding & Failure Tracking**: Agents now track failed intentions and apply utility penalties to unreachable goals, preventing infinite "stalling" loops.
 - **Targeted Exploration**: Hungry agents now use multi-step pathfinding to reach distant, potentially fertile areas when searching for food.

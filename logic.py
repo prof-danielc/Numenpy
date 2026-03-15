@@ -101,7 +101,7 @@ class GameLogic:
                         self.world.resources.pop(i)
                         agent.hunger = max(0.0, agent.hunger - 0.5)
                         if hasattr(agent.ai, 'learning'):
-                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 1.5, agent.ai.traits.traits)
+                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 2.0, agent.ai.traits.traits)
                         food_found = True
                         result = "SUCCESS"
                         break
@@ -160,7 +160,7 @@ class GameLogic:
                         self.world.resources.pop(i)
                         agent.hunger = max(0.0, agent.hunger - 0.7)
                         if hasattr(agent.ai, 'learning'):
-                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 2.0, agent.ai.traits.traits)
+                            agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 1.0, agent.ai.traits.traits)
                         remains_found = True
                         result = "SUCCESS"
                         break

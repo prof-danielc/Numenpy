@@ -66,11 +66,14 @@ Pushed by **Slaps** and destructive actions.
 | **Eat** | +Patience, +Obedience | +Greed, +Gluttony |
 | **Explore** | +Curiosity, +Focus | +Fearfulness |
 | **Work** | +Diligence, +Altruism | +Laziness, +Neglectfulness |
+| **Help** | +Compassion, +Altruism | +Sadism, +Cruelty |
+| **Idle / Unknown** | +Patience, +Gentleness | +Arrogance, +Aggression |
 
 ## Technical Requirements
 - `TraitSystem` needs to initialize with species-specific priors using the new range.
 - `DesireSystem` must map the `[-1, +1]` traits to utility values (e.g., `utility = drive * (trait + 1) / 2` or similar normalization).
 - `LearningSystem` should trigger trait updates when `apply_feedback` is called.
+- **Multi-Plan Credit Assignment**: `LearningSystem` must maintain a history of recent `plan_ids` and distribute rewards across them with decaying weights (e.g., current plan: 1.0, previous: 0.5, etc.) to bridge plan transitions.
 
 ## UI/Debugging
 - Brain Monitor (sidebar) must display the full list of traits and their new values.

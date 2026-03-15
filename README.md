@@ -9,6 +9,8 @@ Numenpy is a research-oriented simulation prototype inspired by games like *Blac
 - **Dynamic Terrain**: A grid-based hex-like world with elevation, water, and mountains that affect movement and planning.
 - **Biological Simulation**: Agents have internal drives (Hunger, Social, Boredom) that decay over time and drive their decision-making.
 - **Detailed Death Logging**: The journal records specific death causes (starvation vs. violence) and tracks "carnage" and "remains" for predators.
+- **Alignment-Driven Behavior**: Traits like Gentleness and Compassion dynamically influence goal utility. High-alignment agents naturally prioritize altruistic actions (e.g., helping) over violent ones (e.g., hunting villagers).
+- **Ethical Learning System**: The reinforcement system now correctly maps intentions to moral development. Rewarding pro-social behavior and punishing antisocial actions builds stable, alignment-consistent habits.
 - **Robust Pathfinding & Exploration**: Agents detect unreachable goals, penalize failing intentions, and use targeted multi-step exploration to find resources efficiently in sparse environments.
 - **Deterministic Replay**: The Global Event Journal records every logical event, enabling session persistence and reproducible debugging.
 
