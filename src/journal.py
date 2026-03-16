@@ -11,7 +11,8 @@ class GlobalEventJournal:
         self.record_event("session_start", "system", {"world_seed": world_seed})
 
     def record_event(self, event_type: str, actor_id: str, data: dict, plan_id: Optional[str] = None, intention_id: Optional[str] = None, rng_seed: Optional[int] = None):
-        print(f"EVENT: {actor_id} - {event_type} - {data}")
+        if "move" not in event_type and "idle" not in event_type:
+            print(f"EVENT: {actor_id} - {event_type} - {data}")
         event = {
             "timestamp": time.time(),
             "event_type": event_type,

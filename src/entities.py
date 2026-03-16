@@ -12,6 +12,8 @@ class Agent:
         self.hunger = 0
         self.trainable = False
         self.last_action_result = "NONE"
+        self.last_action_type = "NONE"
+        self.last_action_target = None
         self.shared_beliefs = set() # Track what we've already told others
         self.killed_by = None # ID of agent that killed this one
         self.ai = AgentAI(agent_id, species_priors, seed=seed)
@@ -45,12 +47,13 @@ class Agent:
 
     def update(self, world, journal):
         # 1. Perception (Updated to use World Spatial Query API)
-        # Use query_radius to find nearby agents (e.g. within 5 tiles)
-        nearby_agents = world.query_radius(self.x, self.y, radius=5)
+        # Use query_radius to find nearby agents (e.g. within 15 tiles)
+        perception_radius = 15
+        nearby_agents = world.query_radius(self.x, self.y, radius=perception_radius)
         nearby_agents_clean = [{"id": a.agent_id, "x": a.x, "y": a.y} for a in nearby_agents if a != self]
         
         # Resources nearby (Spatial query would be better here too)
-        resources = world.query_rect(self.x-5, self.y-5, self.x+5, self.y+5)
+        resources = world.query_rect(self.x-perception_radius, self.y-perception_radius, self.x+perception_radius, self.y+perception_radius)
         
         world_view = {
             "neighbors": world.get_terrain_nearby(self.x, self.y, radius=2),
@@ -61,7 +64,7 @@ class Agent:
         }
         
         # 2. Think
-        plan = self.ai.think(self.x, self.y, world_view, last_result=self.last_action_result, shared_beliefs=self.shared_beliefs)
+        plan = self.ai.think(self.x, self.y, world_view, last_result=self.last_action_result, last_action=self.last_action_type, last_target=self.last_action_target, shared_beliefs=self.shared_beliefs)
         return plan
 
 class Person(Agent):

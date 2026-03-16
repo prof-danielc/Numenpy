@@ -18,7 +18,8 @@ class GameWorld:
         # Global tile definition mapping (populated by MapLoader)
         self.tile_definitions = {}
         
-        # Resources: list of (x, y, type) - to be chunked in future
+        # Resources: list of (x, y, type) - TODO:to be chunked in future
+        # TODO: alternatively, use spatial indexing instead of chunks for resources
         self.resources: List[Tuple[int, int, str]] = []
 
     def get_chunk(self, cx: int, cy: int, create: bool = True) -> Chunk:
@@ -69,6 +70,8 @@ class GameWorld:
         """
         Efficiently find all entities within radius using chunked indexing.
         """
+        # TODO: this currently works using chunk logic.
+        # TODO: consider using rtree for spatial indexing for all resources.
         CS = Chunk.CHUNK_SIZE
         min_cx = int((wx - radius) // CS)
         max_cx = int((wx + radius) // CS)

@@ -14,7 +14,7 @@ class GameLogic:
         self.tick_count += 1
         
         # 1. World updates
-        self.world.regenerate_resources(chance=0.0001)
+        self.world.regenerate_resources(chance=0.1)
         
         # 2. Update all entities
         for entity in self.entities:
@@ -89,6 +89,7 @@ class GameLogic:
                     if abs(agent.x - rx) <= 1 and abs(agent.y - ry) <= 1:
                         self.world.resources.pop(i)
                         agent.hunger = max(0.0, agent.hunger - 0.5)
+                        agent.energy = min(agent.energy + 0.1, 1.0)
                         if hasattr(agent.ai, 'learning'):
                             agent.ai.learning.apply_feedback(agent.ai.planner.plan_id, 2.0, agent.ai.traits.traits)
                         food_found = True
@@ -166,6 +167,8 @@ class GameLogic:
         
         # Propagate result to agent for reactivity
         agent.last_action_result = result
+        agent.last_action_type = action_type
+        agent.last_action_target = target
         
         # FR-013: Planner Interruption
         if result == "SUCCESS":

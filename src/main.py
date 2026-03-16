@@ -39,7 +39,7 @@ def handle_inputs(camera, logic, journal, selected_agent, paused, debug_mode):
             # Convert screen to world for selection
             wx, wy = camera.screen_to_world(mx, my)
             # Efficiently pick entity using spatial index
-            picked = logic.world.pick_entity(wx, wy)
+            picked = logic.world.pick_entity(wx, wy, radius=0.8)
             if picked:
                 selected_agent = picked
                 journal.log("player", f"Selected {picked.agent_id} at {wx:.1f}, {wy:.1f}")

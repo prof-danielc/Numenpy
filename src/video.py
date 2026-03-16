@@ -74,10 +74,21 @@ class GameVideo:
                     
                 # Draw target destination
                 last_action, last_target = plan[-1]
-                if isinstance(last_target, (tuple, list)):
+                tx, ty = None, None
+                
+                if last_action in ["move", "eat", "eat_villager"] and isinstance(last_target, (tuple, list)) and len(last_target) == 2:
                     tx, ty = last_target
-                    tsx, tsy = self.camera.world_to_screen(tx, ty)
-                    pygame.draw.circle(self.screen, (255, 0, 0), (int(tsx + tile_size_scaled//2), int(tsy + tile_size_scaled//2)), int(tile_size_scaled * 0.6), 2)
+                elif last_action == "share_belief" and isinstance(last_target, (tuple, list)) and len(last_target) == 3:
+                    # Target is (agent_id, (x, y), type)
+                    loc = last_target[1]
+                    if isinstance(loc, (tuple, list)) and len(loc) == 2:
+                        tx, ty = loc
+                
+                if tx is not None and ty is not None:
+                    # Ensure tx/ty are numbers, not tuples (extra safety)
+                    if isinstance(tx, (int, float)) and isinstance(ty, (int, float)):
+                        tsx, tsy = self.camera.world_to_screen(tx, ty)
+                        pygame.draw.circle(self.screen, (255, 0, 0), (int(tsx + tile_size_scaled//2), int(tsy + tile_size_scaled//2)), int(tile_size_scaled * 0.6), 2)
 
         # 6. Global HUD
         tick_label = self.font_small.render(f"SIM TICK: {logic.tick_count}", True, (200, 200, 200))

@@ -94,7 +94,7 @@ def generate_island_map(width=100, height=100, filename="maps/island_map.json"):
 
     # 5. Assemble and Save
     map_data = {
-        "name": "Generative Island",
+        "name": "Honey Island",
         "width": width,
         "height": height,
         "seed": random.randint(0, 9999),

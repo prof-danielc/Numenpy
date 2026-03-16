@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-03-16
+### Added
+- **Global Pathfinding Stability**: Implemented A* safety limits (2000 iterations, 100 distance cap) to prevent application freezes.
+- **Action Target Persistence**: Agents now track `last_action_target`, enabling coordination and failure-based learning.
+
+### Fixed
+- **Mass Starvation Resolution**: 
+    - **Obstacle Awareness**: Updated A* to natively avoid mountains and trees.
+    - **Failure Learning**: Agents now mark coordinates as `impassable` in their beliefs after a failed move, preventing infinite movement loops.
+    - **Energy Recovery**: Eating resources now properly restores 0.1 energy, allowing agents to recover from near-starvation damage.
+- **Terrain Sync**: Fixed "Optimistic A*" to handle unknown terrain safely while learning from failures.
+
+
 ## [2.0.0] - 2026-03-15
 ### Added
 - **Scalable Chunked Map System**: Moved from fixed grid to a sparse chunk-based storage architecture in `src/world.py`.

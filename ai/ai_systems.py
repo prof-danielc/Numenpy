@@ -9,8 +9,8 @@ class BeliefSystem:
         self.known_locations = {} # (x, y) -> object_type
         self.known_agents = []
         self.known_carnage = set() # Locations of recent deaths
-        self.terrain_kb = {} # (x, y) -> str
-        self.elevation_kb = {} # (x, y) -> float
+        self.terrain_kb: Dict[Tuple[int, int], str] = {} # (x, y) -> str
+        self.elevation_kb: Dict[Tuple[int, int], float] = {} # (x, y) -> float
         
     def update(self, x: int, y: int, neighbors: List, resources: List, agents: List = [], events: List = []):
         # neighbors is now List of (x, y, ttype, elevation)
@@ -46,6 +46,14 @@ class BeliefSystem:
                 if ex is not None and ey is not None:
                     if abs(ex - x) <= 5 and abs(ey - y) <= 5:
                         self.known_carnage.add((ex, ey))
+
+    def mark_impassable(self, x: int, y: int):
+        # Learn from experience that a coordinate is blocked
+        ttype = self.terrain_kb.get((x, y))
+        if ttype:
+            # We don't mark the whole type as impassable unless we want broad learning
+            # But we definitely mark the coordinate
+            self.terrain_kb[(x, y)] = "impassable"
 
     def get_interesting_beliefs(self, shared_set: set):
         # TODO: brainstorming here 
@@ -157,9 +165,17 @@ class DesireSystem:
         if drives["hunger"] > 0.85:
             survival_mult *= 5.0 # Emergency priority
         
-        # Ensure patience doesn't zero out hunger drive (floor 0.2)
-        patience_factor = max(0.2, 2.0 - t_patience)
-        desires.append({"goal": "eat", "utility": drives["hunger"] * patience_factor * bias_eat * survival_mult})
+        # Ensure patience doesn't zero out hunger drive (floor 0.5 for more urgency)
+        patience_factor = max(0.5, 2.0 - t_patience)
+        
+        utility_eat = drives["hunger"] * patience_factor * bias_eat * survival_mult
+        
+        # Absolute priority for starvation
+        if drives["hunger"] > 0.8:
+            # When starving, utility floor is high to ensure commitment
+            utility_eat = max(utility_eat, 5.0 + drives["hunger"] * 10.0)
+            
+        desires.append({"goal": "eat", "utility": utility_eat})
 
         # hunger + creature -> hunt (Only if prey is visible)
         if agent_type == "creature" and drives["hunger"] > 0.4:
@@ -196,7 +212,7 @@ class IntentionSystem:
         self.current_intention: Optional[Dict] = None
         self.failed_intentions: Dict[str, int] = {} # goal -> failure_count
 
-    def commit(self, desires: List[Dict]):
+    def commit(self, desires: List[Dict], hunger: float = 0.0):
         if not desires:
             self.current_intention = None
             return None
@@ -204,6 +220,11 @@ class IntentionSystem:
         # Add penalty to utilities based on failure counts
         for d in desires:
             goal = d["goal"]
+            
+            # CRITICAL: Do not penalize eating when starving
+            if goal == "eat" and hunger > 0.8:
+                continue
+                
             fail_count = self.failed_intentions.get(goal, 0)
             if fail_count > 0:
                 # Exponential decay penalty
@@ -251,7 +272,7 @@ class Planner:
                     rtype = beliefs.known_locations[target]
                     action = "eat" if rtype == "food" else "eat_villager"
                     path = self._astar(x, y, target, beliefs)
-                    if path:
+                    if path is not None:
                         self.current_plan = [("move", p) for p in path] + [(action, target)]
                         return self.current_plan
                 
@@ -273,8 +294,9 @@ class Planner:
                     unshared = beliefs.get_interesting_beliefs(s_set)
                     gossip_actions = [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))] if unshared else []
                     
+                    path = self._astar(x, y, (tx, ty), beliefs)
                     dist = abs(x - tx) + abs(y - ty)
-                    if path:
+                    if path is not None:
                         self.current_plan = [("move", p) for p in path] + gossip_actions + [("socialize", target_agent["id"])]
                         return self.current_plan
                     elif dist <= 2:
@@ -294,7 +316,7 @@ class Planner:
                 for target_agent in agents[:2]:
                     tx, ty = target_agent["x"], target_agent["y"]
                     path = self._astar(x, y, (tx, ty), beliefs)
-                    if path:
+                    if path is not None:
                         self.current_plan = [("move", p) for p in path] + [("kill_villager", target_agent["id"]), ("eat_villager", target_agent["id"])]
                         return self.current_plan
                 
@@ -324,7 +346,7 @@ class Planner:
                             return self.current_plan
                         else:
                             path = self._astar(x, y, (tx, ty), beliefs)
-                            if path:
+                            if path is not None:
                                 self.current_plan = [("move", p) for p in path] + [("share_belief", (target_agent["id"], unshared[0][0], unshared[0][1]))]
                                 return self.current_plan
                 self.current_plan = [("move_random", None)]
@@ -358,8 +380,15 @@ class Planner:
                 self.current_plan = [("move", p) for p in path]
                 return
         
-        # Total fallback
-        self.current_plan = [("move_random", None)]
+        # If no reachable known target, pick a random direction and walk 3 steps into the unknown
+        dx = self.rng.choice([-1, 0, 1])
+        dy = self.rng.choice([-1, 0, 1])
+        if dx == 0 and dy == 0: dx = 1
+        
+        path = []
+        for i in range(1, 4):
+            path.append((x + dx*i, y + dy*i))
+        self.current_plan = [("move", p) for p in path]
 
     def _astar(self, start_x, start_y, goal_pos, beliefs: BeliefSystem):
         import heapq
@@ -368,21 +397,43 @@ class Planner:
         came_from: Dict[Tuple[int, int], Optional[Tuple[int, int]]] = {start: None}
         cost_so_far: Dict[Tuple[int, int], float] = {start: 0.0}
         
+        iterations = 0
+        max_iterations = 2000 # Safety cap to prevent frozen main loop
+        max_dist = 100 # Don't pathfind over massive distances
+        
         while frontier:
+            iterations += 1
+            if iterations > max_iterations: break
+            
             _, current = heapq.heappop(frontier)
             if current == goal_pos: break
             
+            # Manhattan distance cap
+            if abs(current[0] - start_x) + abs(current[1] - start_y) > max_dist:
+                continue
+
             cx, cy = current
-            # Neighbors are adjacent tiles known in terrain_kb
+            # Neighbors: adjacent tiles (Optimistic: include unknown tiles as walkable ground)
             for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 next_pos = (cx + dx, cy + dy)
-                if next_pos not in beliefs.terrain_kb: continue
-                if beliefs.terrain_kb[next_pos] == "water": continue
+                
+                if next_pos not in beliefs.terrain_kb:
+                    # Optimistically assume unknown tiles are walkable ground
+                    tile_type = "ground"
+                    h2 = 0.0
+                else:
+                    tile_type = beliefs.terrain_kb[next_pos]
+                    h2 = beliefs.elevation_kb.get(next_pos, 0.0)
+
+                if tile_type == "water" or tile_type == "mountain" or tile_type == "tree" or tile_type == "impassable": continue
+                
+                # Check for explicit non-walkable traits in beliefs if available
+                is_walkable = beliefs.beliefs.get(tile_type, {}).get("walkable", True)
+                if not is_walkable: continue
                 
                 # Cost formula matching logic.py
-                h1 = beliefs.elevation_kb[current]
-                h2 = beliefs.elevation_kb[next_pos]
-                new_cost = cost_so_far[current] + 1.0 + max(0, h2 - h1) * 5.0
+                h1 = beliefs.elevation_kb.get(current, 0.0)
+                new_cost = cost_so_far[current] + 1.0 + max(0.0, h2 - h1) * 5.0
                 
                 if next_pos not in cost_so_far or new_cost < cost_so_far[next_pos]:
                     cost_so_far[next_pos] = new_cost
