@@ -1,0 +1,77 @@
+import random
+from typing import Optional, Any
+from .ai_systems import BeliefSystem, DriveSystem, TraitSystem, DesireSystem, IntentionSystem, Planner
+from .learning import LearningSystem
+
+class AgentAI:
+    def __init__(self, agent_id: str, species_priors: Optional[dict] = None, seed: int = 1337):
+        self.agent_id = agent_id
+        self.rng = random.Random(seed)
+        self.beliefs = BeliefSystem()
+        self.drives = DriveSystem()
+        self.traits = TraitSystem(species_priors, rng=self.rng)
+        self.desires = DesireSystem()
+        self.intentions = IntentionSystem()
+        self.planner = Planner(self.rng)
+        self.learning = LearningSystem(agent_id)
+        self.agent_type = species_priors.get("type", "unknown") if species_priors else "unknown"
+        
+    def think(self, x: int, y: int, world_view: dict, last_result: str = "NONE", last_action: str = "NONE", last_target: Any = None, shared_beliefs: Optional[set] = None):
+        # 1. Update Beliefs
+        self.beliefs.update(x, y, world_view["neighbors"], world_view["resources"], world_view.get("agents", []), world_view.get("recent_events", []))
+        
+        # LEARN: If we failed a move, it was impassable
+        if last_result == "IMPASSABLE" and last_action == "move" and last_target:
+            self.beliefs.mark_impassable(*last_target)
+        
+        # 2. Update Drives
+        self.drives.update()
+        # SYNC: Biological hunger overrides psychological accumulation
+        if "physical_hunger" in world_view:
+            self.drives.drives["hunger"] = world_view["physical_hunger"]
+ 
+        # 3. Handle Failure / Interruption
+        # If the last action failed, we should flush existing plan and re-evaluate
+        if last_result not in ["SUCCESS", "NONE"]:
+            self.planner.current_plan = []
+            self.intentions.report_failure()
+        elif last_result == "SUCCESS":
+            # Only report success to the intention system if the plan is FULLY finished
+            # This prevents intermediate moves from clearing failure counts for unreachable targets
+            if not self.planner.current_plan:
+                # Goal-Satisfaction Mapping
+                GOAL_ACTIONS = {
+                    "eat": ["eat", "eat_villager"],
+                    "socialize": ["socialize", "share_belief"],
+                    "hunt": ["kill_villager", "eat_villager"],
+                    "help": ["share_belief"]
+                }
+                current_goal = self.intentions.current_intention["goal"] if self.intentions.current_intention else None
+                
+                # Only report success if the goal was actually reached
+                if current_goal in GOAL_ACTIONS:
+                    if last_action in GOAL_ACTIONS.get(str(current_goal), []):
+                        self.intentions.report_success()
+                    else:
+                        # Finished a plan but didn't actually achieve the goal (e.g. exploration fallback)
+                        self.intentions.report_failure()
+                else:
+                    # Goals like 'explore' or 'idle' succeed at any step completion
+                    self.intentions.report_success()
+        
+        # 3. Evaluate Desires
+        candidate_desires = self.desires.evaluate(self.drives.drives, self.traits.traits, self.learning, self.agent_type, self.beliefs)
+        
+        # 4. Commit to Intention if no active plan
+        if not self.planner.current_plan:
+            intention = self.intentions.commit(candidate_desires, hunger=self.drives.drives["hunger"])
+            if intention:
+                self.planner.generate_plan(intention, x, y, self.beliefs, self.agent_type, shared_beliefs=shared_beliefs)
+        
+        # 5. Record action if plan exists (for credit assignment)
+        if self.planner.current_plan and self.planner.plan_id:
+            action_tag = self.planner.current_plan[0][0]
+            intention_id = self.intentions.current_intention["goal"] if self.intentions.current_intention else "unknown"
+            self.learning.record_action(self.planner.plan_id, intention_id, action_tag)
+            
+        return self.planner.current_plan
